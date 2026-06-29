@@ -37,7 +37,7 @@ class STARE(Dataset):
 
         img_path = os.path.join(self.data_path, 'images',name+'.ppm')
         
-        msk_path = os.path.join(self.data_path, 'masks', name+'.ah.ppm')
+        msk_path = os.path.join(self.data_path, 'masks', name+'.ah.pgm')
 
         img = Image.open(img_path).convert('RGB')
         mask = Image.open(msk_path).convert('L')

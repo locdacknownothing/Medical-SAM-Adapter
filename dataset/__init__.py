@@ -113,7 +113,7 @@ def get_dataloader(args):
         dataset_size = len(dataset)
         indices = list(range(dataset_size))
         split = int(np.floor(0.2 * dataset_size))
-        np.random.shuffle(indices)
+        # np.random.shuffle(indices)
         train_sampler = SubsetRandomSampler(indices[split:])
         test_sampler = SubsetRandomSampler(indices[:split])
 
