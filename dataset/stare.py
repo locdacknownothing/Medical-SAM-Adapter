@@ -48,7 +48,7 @@ class STARE(Dataset):
         #     label = int(self.label_list[index])
 
         newsize = (self.img_size, self.img_size)
-        mask = mask.resize(newsize)
+        mask = mask.resize(newsize, Image.NEAREST)
 
         if self.prompt == 'click':
             point_label, pt = random_click(np.array(mask) / 255, point_label)

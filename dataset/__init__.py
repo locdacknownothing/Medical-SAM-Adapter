@@ -28,7 +28,7 @@ def get_dataloader(args):
     ])
 
     transform_train_seg = transforms.Compose([
-        transforms.Resize((args.out_size,args.out_size)),
+        transforms.Resize((args.out_size,args.out_size), interpolation=transforms.InterpolationMode.NEAREST),
         transforms.ToTensor(),
     ])
 
@@ -39,7 +39,7 @@ def get_dataloader(args):
     ])
 
     transform_test_seg = transforms.Compose([
-        transforms.Resize((args.out_size,args.out_size)),
+        transforms.Resize((args.out_size,args.out_size), interpolation=transforms.InterpolationMode.NEAREST),
         transforms.ToTensor(),
     ])
     
