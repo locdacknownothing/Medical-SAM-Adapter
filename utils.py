@@ -54,6 +54,7 @@ from torch.utils.data import DataLoader
 # from lucent.misc.io import show
 from torchvision.models import vgg19
 from tqdm import tqdm
+from sklearn.metrics import confusion_matrix, accuracy_score, recall_score, roc_auc_score, matthews_corrcoef, f1_score, jaccard_score
 
 import cfg
 # from precpt import run_precpt
@@ -1078,6 +1079,10 @@ def eval_seg(pred,true_mask_p,threshold):
         return tuple(np.array(ious + dices) / len(threshold)) # tuple has a total number of c * 2
     else:
         eiou, edice = 0,0
+
+        # Additional metrics for binary segmentation
+        eaccuracy, esensitivity, especificity, eauc, emcc, ef1, ejaccard = (0,) * 7 
+
         for th in threshold:
 
             gt_vmask_p = (true_mask_p > th).float()
@@ -1093,7 +1098,32 @@ def eval_seg(pred,true_mask_p,threshold):
             '''dice for torch'''
             edice += dice_coeff(vpred[:,0,:,:], gt_vmask_p[:,0,:,:]).item()
             
-        return eiou / len(threshold), edice / len(threshold)
+            # Flatten arrays for metric calculations
+            y_pred_flat = np.ravel(disc_pred)
+            y_test_flat = np.ravel(disc_mask)
+
+            # Compute confusion matrix and metrics
+            tn, fp, fn, tp = confusion_matrix(y_test_flat, y_pred_flat).ravel()
+            eaccuracy += accuracy_score(y_test_flat, y_pred_flat)
+            esensitivity += recall_score(y_test_flat, y_pred_flat)
+            especificity += tn / (tn + fp)
+            eauc += roc_auc_score(y_test_flat, y_pred_flat)
+            emcc += matthews_corrcoef(y_test_flat, y_pred_flat)
+            ef1 += f1_score(y_test_flat, y_pred_flat)
+            ejaccard += jaccard_score(y_test_flat, y_pred_flat)
+
+        return (
+            eiou / len(threshold), 
+            edice / len(threshold),
+            eaccuracy / len(threshold), 
+            esensitivity / len(threshold), 
+            especificity / len(threshold), 
+            eauc / len(threshold), 
+            emcc / len(threshold), 
+            ef1 / len(threshold), 
+            ejaccard / len(threshold),
+        )
+
 
 # @objectives.wrap_objective()
 def dot_compare(layer, batch=1, cossim_pow=0):

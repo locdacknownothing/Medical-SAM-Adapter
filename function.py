@@ -359,11 +359,9 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                     tot += lossfunc(pred, masks) * cur_bsz
 
                     '''vis images'''
-                    if args.vis is not None and ind % args.vis == 0:
+                    if args.vis is not None:
                         namecat = 'Test'
-                        for na in name[:2
-                        
-                        ]:
+                        for na in name[:2]:
                             img_name = na.split('/')[-1].split('.')[0]
                             namecat = namecat + img_name + '+'
                         vis_image(origin_imgs/255,pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
@@ -371,6 +369,10 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
 
                     temp = eval_seg(pred, masks, threshold)
                     temp = tuple([number * cur_bsz for number in temp])
+
+                    # Adapt for additional metrics
+                    if len(temp) > len(mix_res):
+                        mix_res = (0,)*len(temp)
                     mix_res = tuple([sum(a) for a in zip(mix_res, temp)])
 
             pbar.update()

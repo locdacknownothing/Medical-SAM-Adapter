@@ -91,8 +91,14 @@ def main():
         net.eval()
 
         if args.dataset != 'REFUGE':
-            tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, start_epoch, net)
+            tol, metrics = function.validation_sam(args, nice_test_loader, start_epoch, net)
+            eiou, edice = metrics[:2]
+            if len(metrics) > 2:
+                print(metrics)
+                eaccuracy, esensitivity, especificity, eauc, emcc, ef1, ejaccard = metrics[2:]
+
             logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {start_epoch}.')
+            logger.info(f'ACC: {eaccuracy}, SEN: {esensitivity}, SPE: {especificity}, AUC: {eauc}, MCC: {emcc}, F1: {ef1}, JACC: {ejaccard}.')
         else:
             tol, (eiou_cup, eiou_disc, edice_cup, edice_disc) = function.validation_sam(args, nice_test_loader, start_epoch, net)
             logger.info(f'Total score: {tol}, IOU_CUP: {eiou_cup}, IOU_DISC: {eiou_disc}, DICE_CUP: {edice_cup}, DICE_DISC: {edice_disc} || @ epoch {start_epoch}.')
