@@ -18,7 +18,7 @@ import torchvision
 import torchvision.transforms as transforms
 from einops import rearrange
 from monai.inferers import sliding_window_inference
-from monai.losses import DiceCELoss
+from monai.losses import DiceCELoss, DiceFocalLoss, SoftDiceclDiceLoss
 from monai.transforms import AsDiscrete
 from PIL import Image
 from skimage import io
@@ -47,7 +47,7 @@ pos_weight = torch.ones([1]).cuda(device=GPUdevice)*2
 criterion_G = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
 torch.backends.cudnn.benchmark = True
-loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
+# loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
 scaler = torch.cuda.amp.GradScaler()
 max_iterations = settings.EPOCH
 post_label = AsDiscrete(to_onehot=14)
@@ -57,6 +57,19 @@ dice_val_best = 0.0
 global_step_best = 0
 epoch_loss_values = []
 metric_values = []
+
+def get_loss(loss_func):
+    if loss_func == 'dice_ce':
+        lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
+    elif loss_func == 'dice_focal':
+        lossfunc = DiceFocalLoss(sigmoid=True, squared_pred=True, reduction='mean')
+    elif loss_func == 'soft_dice_cldice':
+        lossfunc = SoftDiceclDiceLoss(iter_=7, alpha=0.5, smooth=1.0)
+    else:
+        lossfunc = criterion_G
+    
+    return lossfunc
+
 
 def train_sam(args, net: nn.Module, optimizer, train_loader,
           epoch, writer, schedulers=None, vis = 50):
@@ -73,10 +86,7 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
     if args.thd:
         lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
     else:
-        if args.loss_func == 'dice_ce':
-            lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
-        else:
-            lossfunc = criterion_G
+        lossfunc = get_loss(args.loss_func)
 
     with tqdm(total=len(train_loader), desc=f'Epoch {epoch}', unit='img') as pbar:
         for pack in train_loader:
@@ -243,10 +253,7 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
     if args.thd:
         lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
     else:
-        if args.loss_func == 'dice_ce':
-            lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
-        else:
-            lossfunc = criterion_G
+        lossfunc = get_loss(args.loss_func)
 
     with tqdm(total=n_val, desc='Validation round', unit='batch', leave=False) as pbar:
         for ind, pack in enumerate(val_loader):
