@@ -78,7 +78,7 @@ def main():
 
     '''checkpoint path and tensorboard'''
     # iter_per_epoch = len(Glaucoma_training_loader)
-    checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, settings.TIME_NOW)
+    # checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, settings.TIME_NOW)
     #use tensorboard
     if not os.path.exists(settings.LOG_DIR):
         os.mkdir(settings.LOG_DIR)
@@ -88,9 +88,9 @@ def main():
     # writer.add_graph(net, Variable(input_tensor, requires_grad=True))
 
     #create checkpoint folder to save model
-    if not os.path.exists(checkpoint_path):
-        os.makedirs(checkpoint_path)
-    checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
+    # if not os.path.exists(checkpoint_path):
+    #     os.makedirs(checkpoint_path)
+    # checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
 
     '''begain training'''
     best_acc = 0.0
@@ -101,8 +101,13 @@ def main():
 
         if epoch < 5:
             if args.dataset != 'REFUGE':
-                tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, epoch, net, writer)
+                tol, metrics = function.validation_sam(args, nice_test_loader, epoch, net, writer)
+                eiou, edice = metrics[:2]
+                if len(metrics) > 2:
+                    eaccuracy, esensitivity, especificity, eauc, emcc, ef1, ejaccard = metrics[2:]
+    
                 logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {epoch}.')
+                logger.info(f'ACC: {eaccuracy}, SEN: {esensitivity}, SPE: {especificity}, AUC: {eauc}, MCC: {emcc}, F1: {ef1}, JACC: {ejaccard}.')
             else:
                 tol, (eiou_cup, eiou_disc, edice_cup, edice_disc) = function.validation_sam(args, nice_test_loader, epoch, net, writer)
                 logger.info(f'Total score: {tol}, IOU_CUP: {eiou_cup}, IOU_DISC: {eiou_disc}, DICE_CUP: {edice_cup}, DICE_DISC: {edice_disc} || @ epoch {epoch}.')

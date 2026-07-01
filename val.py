@@ -94,7 +94,7 @@ def main():
             tol, metrics = function.validation_sam(args, nice_test_loader, start_epoch, net)
             eiou, edice = metrics[:2]
             if len(metrics) > 2:
-                print(metrics)
+                # print(metrics)
                 eaccuracy, esensitivity, especificity, eauc, emcc, ef1, ejaccard = metrics[2:]
 
             logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {start_epoch}.')

@@ -73,7 +73,10 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
     if args.thd:
         lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
     else:
-        lossfunc = criterion_G
+        if args.loss_func == 'dice_ce':
+            lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
+        else:
+            lossfunc = criterion_G
 
     with tqdm(total=len(train_loader), desc=f'Epoch {epoch}', unit='img') as pbar:
         for pack in train_loader:
@@ -240,7 +243,10 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
     if args.thd:
         lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
     else:
-        lossfunc = criterion_G
+        if args.loss_func == 'dice_ce':
+            lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
+        else:
+            lossfunc = criterion_G
 
     with tqdm(total=n_val, desc='Validation round', unit='batch', leave=False) as pbar:
         for ind, pack in enumerate(val_loader):

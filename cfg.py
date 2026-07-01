@@ -51,8 +51,7 @@ def parse_args():
     type=str,
     default='../data',
     help='The path of segmentation data')
-    # '../dataset/RIGA/DiscRegion'
-    # '../dataset/ISIC'
+    parser.add_argument('-loss_func', type=str, default='dice_ce', choices=['bce', 'dice_ce'], help='loss function to use for 2D')
     opt = parser.parse_args()
 
     return opt
