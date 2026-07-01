@@ -1029,7 +1029,27 @@ def vis_image(imgs, pred_masks, gt_masks, save_path, reverse = False, points = N
 
     return
 
-def eval_seg(pred,true_mask_p,threshold):
+def postprocess_small_regions(masks, min_area: int=100):
+    from models.sam.utils.amg import remove_small_regions
+
+    new_masks = []
+    scores = []
+
+    for mask in masks:
+        mask, changed = remove_small_regions(mask, min_area, mode="holes")
+        unchanged = not changed
+        mask, changed = remove_small_regions(mask, min_area, mode="islands")
+        unchanged = unchanged and not changed
+
+        new_masks.append(mask)
+        # Give score=0 to changed masks and score=1 to unchanged masks
+        # so NMS will prefer ones that didn't need postprocessing
+        scores.append(float(unchanged))
+
+    masks = np.array(new_masks).astype('int32')
+    return masks
+
+def eval_seg(pred,true_mask_p,threshold, min_area=100):
     '''
     threshold: a int or a tuple of int
     masks: [b,2,h,w]
@@ -1089,6 +1109,12 @@ def eval_seg(pred,true_mask_p,threshold):
             vpred = (pred > th).float()
             vpred_cpu = vpred.cpu()
             disc_pred = vpred_cpu[:,0,:,:].numpy().astype('int32')
+
+            # Post-processing on small regions
+            if min_area > 0:
+                # print(disc_pred.shape, disc_pred.max())
+                disc_pred = postprocess_small_regions(disc_pred, min_area=min_area)
+                # print(disc_pred.shape, disc_pred.max())
 
             disc_mask = gt_vmask_p [:,0,:,:].squeeze(1).cpu().numpy().astype('int32')
     
@@ -1266,4 +1292,3 @@ def random_box(multi_rater):
     y_max = random.choice(np.arange(y_max-10,y_max+11))
 
     return x_min, x_max, y_min, y_max
-
