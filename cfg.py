@@ -52,6 +52,7 @@ def parse_args():
     default='../data',
     help='The path of segmentation data')
     parser.add_argument('-loss_func', type=str, default='dice_ce', choices=['bce', 'dice_ce', 'dice_focal', 'soft_dice_cldice'], help='loss function to use for 2D')
+    parser.add_argument('-adapter_type', type=str, default='linear', choices=['linear', 'conv'], help='Adapter type: linear (original) or conv (convolutional bottleneck)')
     opt = parser.parse_args()
 
     return opt

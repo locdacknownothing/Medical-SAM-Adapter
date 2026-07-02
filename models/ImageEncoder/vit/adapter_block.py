@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-from ...common import Adapter, LayerNorm2d
+from ...common import Adapter, ConvAdapter, LayerNorm2d
 
 
 class AdapterBlock(nn.Module):
@@ -18,7 +18,7 @@ class AdapterBlock(nn.Module):
         dim: int,
         num_heads: int,
         mlp_ratio: float = 4.0,
-        scale: float = 0.5,
+        scale: float = 0.05,  # 0.5
         qkv_bias: bool = True,
         norm_layer: Type[nn.Module] = nn.LayerNorm,
         act_layer: Type[nn.Module] = nn.GELU,
@@ -59,10 +59,11 @@ class AdapterBlock(nn.Module):
         else:
             adapter_dim = dim
 
-        self.MLP_Adapter = Adapter(adapter_dim, skip_connect=False)  # MLP-adapter, no skip connection
-        self.Space_Adapter = Adapter(adapter_dim)  # with skip connection
+        AdapterClass = ConvAdapter if getattr(args, 'adapter_type', 'linear') == 'conv' else Adapter
+        self.MLP_Adapter = AdapterClass(adapter_dim, skip_connect=False)  # MLP-adapter, no skip connection
+        self.Space_Adapter = AdapterClass(adapter_dim)  # with skip connection
         self.scale = scale
-        self.Depth_Adapter = Adapter(adapter_dim, skip_connect=False)  # no skip connection
+        self.Depth_Adapter = AdapterClass(adapter_dim, skip_connect=False)  # no skip connection
         self.norm2 = norm_layer(dim)
         self.mlp = MLPBlock(embedding_dim=dim, mlp_dim=int(dim * mlp_ratio), act=act_layer)
 
@@ -104,7 +105,9 @@ class AdapterBlock(nn.Module):
 
         x = shortcut + x
         xn = self.norm2(x)
-        x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(xn)
+        # x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(xn)
+        print(f'Scaling factor s={self.scale}')
+        x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(x)
         return x
 
 
