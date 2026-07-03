@@ -1078,7 +1078,8 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
             disc_dice += dice_coeff(vpred[:,0,:,:], gt_vmask_p[:,0,:,:]).item()
             cup_dice += dice_coeff(vpred[:,1,:,:], gt_vmask_p[:,1,:,:]).item()
             
-        return iou_d / len(threshold), iou_c / len(threshold), disc_dice / len(threshold), cup_dice / len(threshold)
+        processed_pred = (pred > 0.5).to(pred.dtype)
+        return (iou_d / len(threshold), iou_c / len(threshold), disc_dice / len(threshold), cup_dice / len(threshold)), processed_pred
     elif c > 2: # for multi-class segmentation > 2 classes
         ious = [0] * c
         dices = [0] * c
@@ -1087,16 +1088,17 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
             vpred = (pred > th).float()
             vpred_cpu = vpred.cpu()
             for i in range(0, c):
-                pred = vpred_cpu[:,i,:,:].numpy().astype('int32')
+                pred_channel = vpred_cpu[:,i,:,:].numpy().astype('int32')
                 mask = gt_vmask_p[:,i,:,:].squeeze(1).cpu().numpy().astype('int32')
         
                 '''iou for numpy'''
-                ious[i] += iou(pred,mask)
+                ious[i] += iou(pred_channel,mask)
 
                 '''dice for torch'''
                 dices[i] += dice_coeff(vpred[:,i,:,:], gt_vmask_p[:,i,:,:]).item()
             
-        return tuple(np.array(ious + dices) / len(threshold)) # tuple has a total number of c * 2
+        processed_pred = (pred > 0.5).to(pred.dtype)
+        return tuple(np.array(ious + dices) / len(threshold)), processed_pred
     else:
         eiou, edice = 0,0
 
@@ -1138,6 +1140,14 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
             ef1 += f1_score(y_test_flat, y_pred_flat)
             ejaccard += jaccard_score(y_test_flat, y_pred_flat)
 
+        # Get post-processed prediction mask at threshold 0.5
+        vpred_vis = (pred > 0.5).float()
+        processed_pred = vpred_vis
+        if min_area > 0:
+            disc_pred_vis = vpred_vis.cpu()[:,0,:,:].numpy().astype('int32')
+            disc_pred_vis = postprocess_small_regions(disc_pred_vis, min_area=min_area)
+            processed_pred = torch.as_tensor(disc_pred_vis, dtype=pred.dtype, device=pred.device).unsqueeze(1)
+
         return (
             eiou / len(threshold), 
             edice / len(threshold),
@@ -1148,7 +1158,7 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
             emcc / len(threshold), 
             ef1 / len(threshold), 
             ejaccard / len(threshold),
-        )
+        ), processed_pred
 
 
 # @objectives.wrap_objective()

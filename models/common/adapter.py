@@ -13,7 +13,7 @@ class Adapter(nn.Module):
         
     def forward(self, x):
         # x is (BT, HW+1, D)
-        print("Adapter input shape:", x.shape)
+        # print("Adapter input shape:", x.shape)
         xs = self.D_fc1(x)
         xs = self.act(xs)
         xs = self.D_fc2(xs)
@@ -48,7 +48,7 @@ class ConvAdapter(nn.Module):
         nn.init.zeros_(self.conv_up.bias)
 
     def forward(self, x):
-        print("Adapter input shape:", x.shape)
+        # print("Adapter input shape:", x.shape)
         xs = x.permute(0, 3, 1, 2).contiguous()    # → (B, D, H, W)
         xs = self.act(self.conv_down(xs))           # → (B, D/4, H, W)
         xs = self.act(self.conv_spatial(xs))         # → (B, D/4, H, W)

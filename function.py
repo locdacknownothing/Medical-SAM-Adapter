@@ -371,22 +371,22 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                     pred = F.interpolate(pred,size=(args.out_size,args.out_size), mode="bilinear", align_corners=False)
                     tot += lossfunc(pred, masks) * cur_bsz
 
-                    '''vis images'''
-                    if args.vis is not None:
-                        namecat = 'Test'
-                        for na in name[:2]:
-                            img_name = na.split('/')[-1].split('.')[0]
-                            namecat = namecat + img_name + '+'
-                        vis_image(origin_imgs/255,pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
                     
-
-                    temp = eval_seg(pred, masks, threshold)
+                    temp, processed_pred = eval_seg(pred, masks, threshold, min_area=20)
                     temp = tuple([number * cur_bsz for number in temp])
 
                     # Adapt for additional metrics
                     if len(temp) > len(mix_res):
                         mix_res = (0,)*len(temp)
                     mix_res = tuple([sum(a) for a in zip(mix_res, temp)])
+
+                    '''vis images'''
+                    if args.vis is not None:
+                        namecat = 'Test'
+                        for na in name[:2]:
+                            img_name = na.split('/')[-1].split('.')[0]
+                            namecat = namecat + img_name + '+'
+                        vis_image(origin_imgs/255,processed_pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
 
             pbar.update()
 

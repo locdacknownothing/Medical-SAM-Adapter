@@ -106,7 +106,7 @@ class AdapterBlock(nn.Module):
         x = shortcut + x
         xn = self.norm2(x)
         # x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(xn)
-        print(f'Scaling factor s={self.scale}')
+        # print(f'Scaling factor s={self.scale}')
         x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(x)
         return x
 
