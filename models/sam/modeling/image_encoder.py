@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-from ...common import LayerNorm2d
+from ...common import LayerNorm2d, ConvNeXt, FPN, CrossAttentionFusion
 from ...ImageEncoder import AdapterBlock, Block, LoraBlock
 
 
@@ -117,8 +117,28 @@ class ImageEncoderViT(nn.Module):
             LayerNorm2d(out_chans),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # CNN branch
+        convnext_dims = getattr(args, 'convnext_dims', [96, 192, 384, 768])
+        self.convnext = ConvNeXt(in_chans=in_chans, dims=convnext_dims)
 
+        fpn_spatial = img_size // patch_size
+        self.FPN = FPN(
+            in_dims=convnext_dims,
+            out_channels=out_chans,
+            final_spatial_size=fpn_spatial,
+        )
+
+        self.crossattnfusion = CrossAttentionFusion(
+            d_model=out_chans, n_heads=8,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # CNN branch
+        cnn_features = self.convnext.forward_features(x)
+        conv_features = self.FPN(cnn_features)
+        # lower_feature = cnn_features[0]  # stage-0 feature for future decoder use
+
+        # ViT branch
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             # resize position embedding to match the input
@@ -133,9 +153,12 @@ class ImageEncoderViT(nn.Module):
         for blk in self.blocks:
             x = blk(x)
             
-        x = self.neck(x.permute(0, 3, 1, 2))
+        vit_features = self.neck(x.permute(0, 3, 1, 2))
 
+        # Fusion
+        x = self.crossattnfusion(conv_features, vit_features)
         return x
+        # return x, lower_feature
 
 class PatchEmbed(nn.Module):
     """
