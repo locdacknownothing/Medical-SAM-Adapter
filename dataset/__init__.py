@@ -16,6 +16,8 @@ from .pendal import Pendal
 from .refuge import REFUGE
 from .segrap import SegRap
 from .stare import STARE, STARE_AUG
+from .drive import DRIVE
+from .chase import CHASE
 from .toothfairy import ToothFairy
 from .wbc import WBC
 
@@ -125,6 +127,22 @@ def get_dataloader(args):
         nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
         nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
         '''end'''
+
+    elif args.dataset == 'DRIVE':
+        '''DRIVE data'''
+        train_dataset = DRIVE(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
+        test_dataset = DRIVE(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
+
+        nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
+        nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+
+    elif args.dataset == 'CHASE':
+        '''CHASE data'''
+        train_dataset = CHASE(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
+        test_dataset = CHASE(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
+
+        nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
+        nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
 
     elif args.dataset == 'kits':
         '''kits data'''
