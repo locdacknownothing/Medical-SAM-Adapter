@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from utils import random_box, random_click
+from utils import random_box, random_click, init_point_sampling
 
 
 # def pad_to_square(image):
@@ -92,7 +92,7 @@ class STARE(Dataset):
 
 
 class STARE_AUG(Dataset):
-    def __init__(self, args, data_path, transform = None, transform_msk = None, mode = 'Training', prompt = 'click', plane = False):
+    def __init__(self, args, data_path, transform = None, transform_msk = None, mode = 'Training', prompt = 'click', plane = False, point_num=3):
         sub_folder = 'train' if mode == 'Training' else 'test'
         self.data_path = os.path.join(data_path, sub_folder)
         self.name_list = os.listdir(os.path.join(self.data_path, 'labels'))
@@ -100,6 +100,7 @@ class STARE_AUG(Dataset):
         self.img_size = args.image_size
         self.transform = transform
         self.transform_msk = transform_msk
+        self.point_num = point_num
 
     def __len__(self):
         return len(self.name_list)
@@ -122,7 +123,7 @@ class STARE_AUG(Dataset):
         # mask = mask.resize(newsize, Image.NEAREST)
 
         if self.prompt == 'click':
-            point_label, pt = random_click(np.array(mask) / 255, point_label)
+            pt, point_label = init_point_sampling(np.array(mask) / 255, get_point=self.point_num)
 
         if self.transform:
             state = torch.get_rng_state()
