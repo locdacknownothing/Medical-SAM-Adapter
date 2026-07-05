@@ -425,8 +425,8 @@ def set_log_dir(root_dir, exp_name):
 def save_checkpoint(states, is_best, output_dir,
                     filename='checkpoint.pth'):
     torch.save(states, os.path.join(output_dir, filename))
-    if is_best:
-        torch.save(states, os.path.join(output_dir, 'checkpoint_best.pth'))
+    # if is_best:
+    #     torch.save(states, os.path.join(output_dir, 'checkpoint_best.pth'))
 
 
 class RunningStats:
@@ -1118,27 +1118,32 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
                 disc_pred = postprocess_small_regions(disc_pred, min_area=min_area)
                 # print(disc_pred.shape, disc_pred.max())
 
-            disc_mask = gt_vmask_p [:,0,:,:].squeeze(1).cpu().numpy().astype('int32')
+            disc_mask = gt_vmask_p [:,0,:,:].cpu().numpy().astype('int32')
     
             '''iou for numpy'''
             eiou += iou(disc_pred,disc_mask)
 
-            '''dice for torch'''
-            edice += dice_coeff(vpred[:,0,:,:], gt_vmask_p[:,0,:,:]).item()
-            
-            # Flatten arrays for metric calculations
-            y_pred_flat = np.ravel(disc_pred)
-            y_test_flat = np.ravel(disc_mask)
+            # Flatten arrays for scikit-learn calculations across the whole batch
+            y_pred_flat = disc_pred.ravel()
+            y_test_flat = disc_mask.ravel()
 
-            # Compute confusion matrix and metrics
-            tn, fp, fn, tp = confusion_matrix(y_test_flat, y_pred_flat).ravel()
+            '''dice using sklearn f1_score'''
+            edice += f1_score(y_test_flat, y_pred_flat, zero_division=0)
+            
+            # Compute confusion matrix and metrics using scikit-learn built-in methods
+            tn, fp, fn, tp = confusion_matrix(y_test_flat, y_pred_flat, labels=[0, 1]).ravel()
             eaccuracy += accuracy_score(y_test_flat, y_pred_flat)
-            esensitivity += recall_score(y_test_flat, y_pred_flat)
-            especificity += tn / (tn + fp)
-            eauc += roc_auc_score(y_test_flat, y_pred_flat)
+            esensitivity += recall_score(y_test_flat, y_pred_flat, zero_division=0)
+            especificity += tn / (tn + fp) if (tn + fp) > 0 else 0.0
+            
+            if len(np.unique(y_test_flat)) > 1:
+                eauc += roc_auc_score(y_test_flat, y_pred_flat)
+            else:
+                eauc += accuracy_score(y_test_flat, y_pred_flat)
+                
             emcc += matthews_corrcoef(y_test_flat, y_pred_flat)
-            ef1 += f1_score(y_test_flat, y_pred_flat)
-            ejaccard += jaccard_score(y_test_flat, y_pred_flat)
+            ef1 += f1_score(y_test_flat, y_pred_flat, zero_division=0)
+            ejaccard += jaccard_score(y_test_flat, y_pred_flat, zero_division=0)
 
         # Get post-processed prediction mask at threshold 0.5
         vpred_vis = (pred > 0.5).float()

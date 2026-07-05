@@ -246,7 +246,8 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
     rater_res = [(0,0,0,0) for _ in range(6)]
     tot = 0
     hard = 0
-    threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
+    # threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
+    threshold = (0.5,)
     GPUdevice = torch.device('cuda:' + str(args.gpu_device))
     device = GPUdevice
 

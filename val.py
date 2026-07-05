@@ -51,8 +51,8 @@ def main():
     assert os.path.exists(checkpoint_file)
     loc = 'cuda:{}'.format(args.gpu_device)
     checkpoint = torch.load(checkpoint_file, map_location=loc)
-    start_epoch = checkpoint['epoch']
-    best_tol = checkpoint['best_tol']
+    start_epoch = checkpoint.get('epoch', -1)
+    best_tol = checkpoint.get('best_tol', -1)
 
     state_dict = checkpoint['state_dict']
     if args.distributed != 'none':
@@ -66,7 +66,7 @@ def main():
     else:
         new_state_dict = state_dict
 
-    net.load_state_dict(new_state_dict)
+    net.load_state_dict(new_state_dict, strict = False)
 
     # args.path_helper = checkpoint['path_helper']
     # logger = create_logger(args.path_helper['log_path'])
