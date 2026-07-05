@@ -170,3 +170,127 @@ class ConvNeXt(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.forward_features(x)
         return features[-1]
+
+
+class GRN(nn.Module):
+    """GRN (Global Response Normalization) layer.
+
+    Normalizes feature maps across spatial dimensions for inter-channel competition.
+    As described in ConvNeXt V2 paper: https://arxiv.org/abs/2301.00808
+    """
+
+    def __init__(self, dim: int):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
+        self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Input shape: (B, H, W, C)
+        Gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
+        Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
+        return self.gamma * (x * Nx) + self.beta + x
+
+
+class ConvNeXtV2Block(nn.Module):
+    """ConvNeXt V2 Block.
+
+    DWConv7x7 → LN → Linear(dim→4·dim) → GELU → GRN(4·dim) → Linear(4·dim→dim) → DropPath + residual.
+    Compared to V1: removes LayerScale (gamma) and inserts GRN after GELU.
+    """
+
+    def __init__(self, dim: int, drop_path: float = 0.0):
+        super().__init__()
+        self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)
+        self.norm = ConvNeXtLayerNorm(dim, eps=1e-6)
+        self.pwconv1 = nn.Linear(dim, 4 * dim)
+        self.act = nn.GELU()
+        self.grn = GRN(4 * dim)
+        self.pwconv2 = nn.Linear(4 * dim, dim)
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
+        x = self.dwconv(x)
+        x = x.permute(0, 2, 3, 1)          # (B, C, H, W) → (B, H, W, C)
+        x = self.norm(x)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.grn(x)
+        x = self.pwconv2(x)
+        x = x.permute(0, 3, 1, 2)          # (B, H, W, C) → (B, C, H, W)
+        x = residual + self.drop_path(x)
+        return x
+
+
+class ConvNeXtV2(nn.Module):
+    """4-stage ConvNeXt V2 backbone.
+
+    CBAM initialization and usage are commented out in this V2 version.
+    """
+
+    def __init__(
+        self,
+        in_chans: int = 3,
+        depths: List[int] = [3, 3, 9, 3],
+        dims: List[int] = [96, 192, 384, 768],
+        drop_path_rate: float = 0.0,
+    ):
+        super().__init__()
+
+        # ---- Downsample layers ----
+        self.downsample_layers = nn.ModuleList()
+        # Stage-0 stem
+        stem = nn.Sequential(
+            nn.Conv2d(in_chans, dims[0], kernel_size=4, stride=4),
+            ConvNeXtLayerNorm(dims[0], eps=1e-6, data_format="channels_first"),
+        )
+        self.downsample_layers.append(stem)
+        # Stages 1–3
+        for i in range(3):
+            downsample_layer = nn.Sequential(
+                ConvNeXtLayerNorm(dims[i], eps=1e-6, data_format="channels_first"),
+                nn.Conv2d(dims[i], dims[i + 1], kernel_size=2, stride=2),
+            )
+            self.downsample_layers.append(downsample_layer)
+
+        # ---- ConvNeXtV2Block stages ----
+        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+        self.stages = nn.ModuleList()
+        cur = 0
+        for i in range(4):
+            stage = nn.Sequential(
+                *[
+                    ConvNeXtV2Block(
+                        dim=dims[i],
+                        drop_path=dp_rates[cur + j],
+                    )
+                    for j in range(depths[i])
+                ]
+            )
+            self.stages.append(stage)
+            cur += depths[i]
+
+        # ---- CBAM per stage ----
+        # self.cbams = nn.ModuleList([CBAM(dim) for dim in dims])
+
+        # ---- Weight init ----
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m: nn.Module) -> None:
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            trunc_normal_(m.weight, std=0.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    def forward_features(self, x: torch.Tensor) -> List[torch.Tensor]:
+        features: List[torch.Tensor] = []
+        for i in range(4):
+            x = self.downsample_layers[i](x)
+            # x = x + self.cbams[i](x)
+            features.append(x)
+            x = self.stages[i](x)
+        return features
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        features = self.forward_features(x)
+        return features[-1]
