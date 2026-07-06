@@ -118,32 +118,32 @@ class ImageEncoderViT(nn.Module):
         )
 
         # CNN branch
-        convnext_dims = getattr(args, 'convnext_dims', [96, 192, 384, 768])
-        convnext_ver = getattr(args, 'convnext_ver', None)
-        if convnext_ver is None:
-            convnext_ver = 2 if 'convnextv2' in getattr(args, 'exp_name', '') else 1
+        # convnext_dims = getattr(args, 'convnext_dims', [96, 192, 384, 768])
+        # convnext_ver = getattr(args, 'convnext_ver', None)
+        # if convnext_ver is None:
+        #     convnext_ver = 2 if 'convnextv2' in getattr(args, 'exp_name', '') else 1
 
-        if convnext_ver == 2:
-            self.convnext = ConvNeXtV2(in_chans=in_chans, dims=convnext_dims)
-        else:
-            self.convnext = ConvNeXt(in_chans=in_chans, dims=convnext_dims)
+        # if convnext_ver == 2:
+        #     self.convnext = ConvNeXtV2(in_chans=in_chans, dims=convnext_dims)
+        # else:
+        #     self.convnext = ConvNeXt(in_chans=in_chans, dims=convnext_dims)
 
-        fpn_spatial = img_size // patch_size
-        self.FPN = FPN(
-            in_dims=convnext_dims,
-            out_channels=out_chans,
-            final_spatial_size=fpn_spatial,
-        )
+        # fpn_spatial = img_size // patch_size
+        # self.FPN = FPN(
+        #     in_dims=convnext_dims,
+        #     out_channels=out_chans,
+        #     final_spatial_size=fpn_spatial,
+        # )
 
-        self.crossattnfusion = CrossAttentionFusion(
-            d_model=out_chans, n_heads=8,
-        )
+        # self.crossattnfusion = CrossAttentionFusion(
+        #     d_model=out_chans, n_heads=8,
+        # )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # CNN branch
-        cnn_features = self.convnext.forward_features(x)
-        conv_features = self.FPN(cnn_features)
-        # lower_feature = cnn_features[0]  # stage-0 feature for future decoder use
+        # # CNN branch
+        # cnn_features = self.convnext.forward_features(x)
+        # conv_features = self.FPN(cnn_features)
+        # # lower_feature = cnn_features[0]  # stage-0 feature for future decoder use
 
         # ViT branch
         x = self.patch_embed(x)
@@ -152,7 +152,7 @@ class ImageEncoderViT(nn.Module):
             new_abs_pos = F.interpolate(
                 self.pos_embed.permute(0, 3, 1, 2),
                 size=(x.shape[1], x.shape[2]),
-                mode="linear",
+                mode="bilinear",
                 align_corners=False,
             ).permute(0, 2, 3, 1)
             x = x + new_abs_pos
@@ -161,9 +161,9 @@ class ImageEncoderViT(nn.Module):
             x = blk(x)
             
         vit_features = self.neck(x.permute(0, 3, 1, 2))
-
+        x = vit_features
         # Fusion
-        x = self.crossattnfusion(conv_features, vit_features)
+        # x = self.crossattnfusion(conv_features, vit_features)
         return x
         # return x, lower_feature
 

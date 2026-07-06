@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from .cbam import CBAM
+from .convnext import ConvNeXtBlock
 
 
 class Adapter(nn.Module):
@@ -25,10 +27,10 @@ class Adapter(nn.Module):
 
 
 class ConvAdapter(nn.Module):
-    """Fully convolutional adapter with ResNet-style bottleneck.
+    """Hybrid ConvNeXt-CBAM Adapter.
     
-    Replaces the original linear adapter with a 1×1 → 3×3 → 1×1 conv
-    bottleneck. Designed for SAM's ViT which maintains 4D (B,H,W,D) format.
+    Replaces the original linear adapter with:
+    1x1 Conv (Down) -> ConvNeXtBlock -> CBAM -> 1x1 Conv (Up)
     """
     def __init__(self, D_features, mlp_ratio=0.25, act_layer=nn.GELU, skip_connect=True):
         super().__init__()
@@ -38,8 +40,10 @@ class ConvAdapter(nn.Module):
         
         # 1×1 pointwise down-projection
         self.conv_down = nn.Conv2d(D_features, D_hidden, kernel_size=1)
-        # 3×3 spatial + cross-channel mixing at bottleneck
-        self.conv_spatial = nn.Conv2d(D_hidden, D_hidden, kernel_size=3, padding=1)
+        # ConvNeXt Block
+        self.convnext = ConvNeXtBlock(dim=D_hidden)
+        # CBAM Block
+        self.cbam = CBAM(channel=D_hidden)
         # 1×1 pointwise up-projection
         self.conv_up = nn.Conv2d(D_hidden, D_features, kernel_size=1)
         
@@ -48,10 +52,10 @@ class ConvAdapter(nn.Module):
         nn.init.zeros_(self.conv_up.bias)
 
     def forward(self, x):
-        # print("Adapter input shape:", x.shape)
         xs = x.permute(0, 3, 1, 2).contiguous()    # → (B, D, H, W)
-        xs = self.act(self.conv_down(xs))           # → (B, D/4, H, W)
-        xs = self.act(self.conv_spatial(xs))         # → (B, D/4, H, W)
+        xs = self.act(self.conv_down(xs))           # → (B, D_hidden, H, W)
+        xs = self.cbam(xs)                          # → (B, D_hidden, H, W)
+        xs = self.convnext(xs)                      # → (B, D_hidden, H, W)
         xs = self.conv_up(xs)                        # → (B, D, H, W)
         xs = xs.permute(0, 2, 3, 1).contiguous()    # → (B, H, W, D)
         if self.skip_connect:
