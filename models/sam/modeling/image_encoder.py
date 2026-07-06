@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-from ...common import LayerNorm2d, ConvNeXt, FPN, CrossAttentionFusion
+from ...common import LayerNorm2d, ConvNeXt, ConvNeXtV2, FPN, CrossAttentionFusion
 from ...ImageEncoder import AdapterBlock, Block, LoraBlock
 
 
@@ -119,7 +119,14 @@ class ImageEncoderViT(nn.Module):
 
         # CNN branch
         convnext_dims = getattr(args, 'convnext_dims', [96, 192, 384, 768])
-        self.convnext = ConvNeXt(in_chans=in_chans, dims=convnext_dims)
+        convnext_ver = getattr(args, 'convnext_ver', None)
+        if convnext_ver is None:
+            convnext_ver = 2 if 'convnextv2' in getattr(args, 'exp_name', '') else 1
+
+        if convnext_ver == 2:
+            self.convnext = ConvNeXtV2(in_chans=in_chans, dims=convnext_dims)
+        else:
+            self.convnext = ConvNeXt(in_chans=in_chans, dims=convnext_dims)
 
         fpn_spatial = img_size // patch_size
         self.FPN = FPN(

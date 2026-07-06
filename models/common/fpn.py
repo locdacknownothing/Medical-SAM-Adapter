@@ -9,6 +9,7 @@ from typing import List
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class FPN(nn.Module):
@@ -70,6 +71,7 @@ class FPN(nn.Module):
         kernel_size = stride + 1
         padding = 1
 
+        self.final_spatial_size = final_spatial_size
         self.final_conv = nn.Conv2d(
             out_channels, out_channels,
             kernel_size=kernel_size, stride=stride, padding=padding,
@@ -93,12 +95,19 @@ class FPN(nn.Module):
 
         for i in range(1, len(features)):
             x = self.upconv_layers[i - 1](x)
-            x = x + self.lat_layers[i](features[i])
+            feat_i = self.lat_layers[i](features[i])
+            # If shape differs due to division rounding (e.g. odd size 37 vs upsampled 36), interpolate
+            if x.shape[-2:] != feat_i.shape[-2:]:
+                x = F.interpolate(x, size=feat_i.shape[-2:], mode="bilinear", align_corners=False)
+            x = x + feat_i
             x = self.high_res_layers[i - 1](x)
             x = self.gelu(x)
 
         # Downsample to match ViT embedding spatial size
         x = self.final_conv(x)
         x = self.gelu(x)
+        # Ensure exact match with layer_norm's expected spatial size
+        if x.shape[-2:] != (self.final_spatial_size, self.final_spatial_size):
+            x = F.interpolate(x, size=(self.final_spatial_size, self.final_spatial_size), mode="bilinear", align_corners=False)
         x = self.layer_norm(x)
         return x
