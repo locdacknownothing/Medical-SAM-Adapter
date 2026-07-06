@@ -72,7 +72,7 @@ class ImageEncoderViT(nn.Module):
         if use_abs_pos:
             # Initialize absolute positional embedding with pretrain image size.
             self.pos_embed = nn.Parameter(
-                torch.zeros(1, 1024 // patch_size, 1024 // patch_size, embed_dim)
+                torch.zeros(1, img_size // patch_size, img_size // patch_size, embed_dim)
             )
 
         self.blocks = nn.ModuleList()
@@ -152,7 +152,7 @@ class ImageEncoderViT(nn.Module):
             new_abs_pos = F.interpolate(
                 self.pos_embed.permute(0, 3, 1, 2),
                 size=(x.shape[1], x.shape[2]),
-                mode="bicubic",
+                mode="linear",
                 align_corners=False,
             ).permute(0, 2, 3, 1)
             x = x + new_abs_pos

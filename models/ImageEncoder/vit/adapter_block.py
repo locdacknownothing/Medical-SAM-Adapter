@@ -18,7 +18,7 @@ class AdapterBlock(nn.Module):
         dim: int,
         num_heads: int,
         mlp_ratio: float = 4.0,
-        scale: float = 0.05,  # 0.5
+        scale: float = 0.5,  # 0.05
         qkv_bias: bool = True,
         norm_layer: Type[nn.Module] = nn.LayerNorm,
         act_layer: Type[nn.Module] = nn.GELU,
@@ -105,9 +105,9 @@ class AdapterBlock(nn.Module):
 
         x = shortcut + x
         xn = self.norm2(x)
-        # x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(xn)
         # print(f'Scaling factor s={self.scale}')
-        x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(x)
+        x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(xn)
+        # x = x + self.mlp(xn) + self.scale * self.MLP_Adapter(x)
         return x
 
 

@@ -139,11 +139,11 @@ class ConvNeXt(nn.Module):
             self.stages.append(stage)
             cur += depths[i]
 
-        # ---- CBAM per stage ----
-        self.cbams = nn.ModuleList([CBAM(dim) for dim in dims])
-
         # ---- Weight init ----
         self.apply(self._init_weights)
+
+        # ---- CBAM per stage ----
+        self.cbams = nn.ModuleList([CBAM(dim) for dim in dims])
 
     def _init_weights(self, m: nn.Module) -> None:
         if isinstance(m, (nn.Conv2d, nn.Linear)):
@@ -169,7 +169,7 @@ class ConvNeXt(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.forward_features(x)
-        return features[-1]
+        return features[-1].permute(0, 3, 1, 2)
 
 
 class GRN(nn.Module):
@@ -270,11 +270,11 @@ class ConvNeXtV2(nn.Module):
             self.stages.append(stage)
             cur += depths[i]
 
-        # ---- CBAM per stage ----
-        # self.cbams = nn.ModuleList([CBAM(dim) for dim in dims])
-
         # ---- Weight init ----
         self.apply(self._init_weights)
+
+        # ---- CBAM per stage ----
+        # self.cbams = nn.ModuleList([CBAM(dim) for dim in dims])
 
     def _init_weights(self, m: nn.Module) -> None:
         if isinstance(m, (nn.Conv2d, nn.Linear)):
@@ -293,4 +293,4 @@ class ConvNeXtV2(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.forward_features(x)
-        return features[-1]
+        return features[-1].permute(0, 3, 1, 2)
