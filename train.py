@@ -50,7 +50,9 @@ def main():
         net.load_state_dict(weights,strict=False)
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5) #learning rate decay
+    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5) #learning rate decay
+
+    best_tol = 0.0
 
     '''load pretrained model'''
     if args.weights != 0:
@@ -93,9 +95,6 @@ def main():
     # checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
 
     '''begain training'''
-    best_acc = 0.0
-    best_tol = 1e4
-    best_dice = 0.0
 
     for epoch in range(settings.EPOCH):
 
@@ -138,18 +137,23 @@ def main():
             else:
                 sd = net.state_dict()
 
-            if edice > best_dice:
-                best_tol = tol
+            if edice > best_tol:
+                best_tol = edice
                 is_best = True
 
-                save_checkpoint({
-                'epoch': epoch + 1,
-                'model': args.net,
-                'state_dict': sd,
-                'optimizer': optimizer.state_dict(),
-                'best_tol': best_dice,
-                'path_helper': args.path_helper,
-            }, is_best, args.path_helper['ckpt_path'], filename="best_dice_checkpoint.pth")
+                save_checkpoint(
+                    {
+                        'epoch': epoch + 1,
+                        'model': args.net,
+                        'state_dict': sd,
+                        'optimizer': optimizer.state_dict(),
+                        'best_tol': best_tol,
+                        'path_helper': args.path_helper,
+                    }, 
+                    is_best, 
+                    args.path_helper['ckpt_path'], 
+                    filename="best_dice_checkpoint.pth",
+                )
             else:
                 is_best = False
 
