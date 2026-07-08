@@ -69,10 +69,12 @@ def main():
         # optimizer.load_state_dict(checkpoint['optimizer'], strict=False)
 
         args.path_helper = checkpoint['path_helper']
-        logger = create_logger(args.path_helper['log_path'])
+        # logger = create_logger(args.path_helper['log_path'])
         print(f'=> loaded checkpoint {checkpoint_file} (epoch {start_epoch})')
-
-    args.path_helper = set_log_dir('logs', args.exp_name)
+    else:
+        args.path_helper = set_log_dir('logs', args.exp_name)
+    
+    # Set logger from args
     logger = create_logger(args.path_helper['log_path'])
     logger.info(args)
 
@@ -81,13 +83,15 @@ def main():
     '''checkpoint path and tensorboard'''
     # iter_per_epoch = len(Glaucoma_training_loader)
     # checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, settings.TIME_NOW)
-    #use tensorboard
-    if not os.path.exists(settings.LOG_DIR):
-        os.mkdir(settings.LOG_DIR)
-    writer = SummaryWriter(log_dir=os.path.join(
-            settings.LOG_DIR, args.net, settings.TIME_NOW))
+    
+    # use tensorboard
+    # if not os.path.exists(settings.LOG_DIR):
+    #     os.mkdir(settings.LOG_DIR)
+    # writer = SummaryWriter(log_dir=os.path.join(
+    #         settings.LOG_DIR, args.net, settings.TIME_NOW))
     # input_tensor = torch.Tensor(args.b, 3, 256, 256).cuda(device = GPUdevice)
     # writer.add_graph(net, Variable(input_tensor, requires_grad=True))
+    writer = None
 
     #create checkpoint folder to save model
     # if not os.path.exists(checkpoint_path):
@@ -157,7 +161,7 @@ def main():
             else:
                 is_best = False
 
-    writer.close()
+    # writer.close()
 
 
 if __name__ == '__main__':
