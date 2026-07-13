@@ -124,8 +124,8 @@ def get_dataloader(args):
         train_dataset = STARE_AUG(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
         test_dataset = STARE_AUG(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
 
-        nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
-        nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+        nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True)
+        nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False)
         '''end'''
 
     elif args.dataset == 'DRIVE':
@@ -133,16 +133,16 @@ def get_dataloader(args):
         train_dataset = DRIVE(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
         test_dataset = DRIVE(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
 
-        nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
-        nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+        nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True)
+        nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False)
 
     elif args.dataset == 'CHASE':
         '''CHASE data'''
         train_dataset = CHASE(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
         test_dataset = CHASE(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
 
-        nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
-        nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+        nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True)
+        nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False)
 
     elif args.dataset == 'kits':
         '''kits data'''
