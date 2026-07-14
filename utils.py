@@ -1137,7 +1137,9 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
             especificity += tn / (tn + fp) if (tn + fp) > 0 else 0.0
             
             if len(np.unique(y_test_flat)) > 1:
-                eauc += roc_auc_score(y_test_flat, y_pred_flat)
+                y_pred_image = pred[:,0,:,:].cpu().numpy().ravel()
+                eauc += roc_auc_score(y_test_flat, y_pred_image)
+                # eauc += roc_auc_score(y_test_flat, y_pred_flat)
             else:
                 eauc += accuracy_score(y_test_flat, y_pred_flat)
                 
