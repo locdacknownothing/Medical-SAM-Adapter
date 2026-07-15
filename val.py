@@ -36,6 +36,10 @@ import function
 
 def main():
     args = cfg.parse_args()
+
+    seed = args.seed
+    set_seed(seed)
+    
     if args.dataset == 'refuge' or args.dataset == 'refuge2':
         args.data_path = '../dataset'
 
