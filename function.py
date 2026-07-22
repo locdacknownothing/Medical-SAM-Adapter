@@ -157,69 +157,76 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                 for n, value in net.image_encoder.named_parameters(): 
                     value.requires_grad = True
                     
-            origin_imgs = imgs.clone()        
-            imgs = net.preprocess(imgs)        
-            imge= net.image_encoder(imgs)
-            with torch.no_grad():
-                if args.net == 'sam' or args.net == 'mobile_sam':
-                    se, de = net.prompt_encoder(
-                        points=pt,
-                        boxes=None,
-                        masks=None,
+            with torch.cuda.amp.autocast():
+                origin_imgs = imgs.clone()        
+                imgs = net.preprocess(imgs)        
+                imge= net.image_encoder(imgs)
+                with torch.no_grad():
+                    if args.net == 'sam' or args.net == 'mobile_sam':
+                        se, de = net.prompt_encoder(
+                            points=pt,
+                            boxes=None,
+                            masks=None,
+                        )
+                    elif args.net == "efficient_sam":
+                        coords_torch,labels_torch = transform_prompt(coords_torch,labels_torch,h,w)
+                        se = net.prompt_encoder(
+                            coords=coords_torch,
+                            labels=labels_torch,
+                        )
+                        
+                if args.net == 'sam':
+                    pred, _ = net.mask_decoder(
+                        image_embeddings=imge,
+                        image_pe=net.prompt_encoder.get_dense_pe(), 
+                        sparse_prompt_embeddings=se,
+                        dense_prompt_embeddings=de, 
+                        multimask_output=(args.multimask_output > 1),
+                    )
+                elif args.net == 'mobile_sam':
+                    pred, _ = net.mask_decoder(
+                        image_embeddings=imge,
+                        image_pe=net.prompt_encoder.get_dense_pe(), 
+                        sparse_prompt_embeddings=se,
+                        dense_prompt_embeddings=de, 
+                        multimask_output=False,
                     )
                 elif args.net == "efficient_sam":
-                    coords_torch,labels_torch = transform_prompt(coords_torch,labels_torch,h,w)
-                    se = net.prompt_encoder(
-                        coords=coords_torch,
-                        labels=labels_torch,
+                    se = se.view(
+                        se.shape[0],
+                        1,
+                        se.shape[1],
+                        se.shape[2],
+                    )
+                    pred, _ = net.mask_decoder(
+                        image_embeddings=imge,
+                        image_pe=net.prompt_encoder.get_dense_pe(), 
+                        sparse_prompt_embeddings=se,
+                        multimask_output=False,
                     )
                     
-            if args.net == 'sam':
-                pred, _ = net.mask_decoder(
-                    image_embeddings=imge,
-                    image_pe=net.prompt_encoder.get_dense_pe(), 
-                    sparse_prompt_embeddings=se,
-                    dense_prompt_embeddings=de, 
-                    multimask_output=(args.multimask_output > 1),
-                )
-            elif args.net == 'mobile_sam':
-                pred, _ = net.mask_decoder(
-                    image_embeddings=imge,
-                    image_pe=net.prompt_encoder.get_dense_pe(), 
-                    sparse_prompt_embeddings=se,
-                    dense_prompt_embeddings=de, 
-                    multimask_output=False,
-                )
-            elif args.net == "efficient_sam":
-                se = se.view(
-                    se.shape[0],
-                    1,
-                    se.shape[1],
-                    se.shape[2],
-                )
-                pred, _ = net.mask_decoder(
-                    image_embeddings=imge,
-                    image_pe=net.prompt_encoder.get_dense_pe(), 
-                    sparse_prompt_embeddings=se,
-                    multimask_output=False,
-                )
-                
-            # Resize to the ordered output size
-            pred = F.interpolate(pred,size=(args.out_size,args.out_size), mode="bilinear", align_corners=False)
+                # Resize to the ordered output size
+                pred = F.interpolate(pred,size=(args.out_size,args.out_size), mode="bilinear", align_corners=False)
 
-            loss = lossfunc(pred, masks)
+                loss = lossfunc(pred, masks)
 
             pbar.set_postfix(**{'loss (batch)': loss.item()})
             epoch_loss += loss.item()
 
-            # nn.utils.clip_grad_value_(net.parameters(), 0.1)
             if args.mod == 'sam_adalora':
-                (loss+lora.compute_orth_regu(net, regu_weight=0.1)).backward()
-                optimizer.step()
+                total_loss = loss + lora.compute_orth_regu(net, regu_weight=0.1)
+                scaler.scale(total_loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)
+                scaler.step(optimizer)
+                scaler.update()
                 rankallocator.update_and_mask(net, ind)
             else:
-                loss.backward()
-                optimizer.step()
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)
+                scaler.step(optimizer)
+                scaler.update()
             
             optimizer.zero_grad()
 

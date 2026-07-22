@@ -24,13 +24,20 @@ from .wbc import WBC
 
 def get_dataloader(args):
     transform_train = transforms.Compose([
-        transforms.Resize((args.image_size,args.image_size)),
+        transforms.Resize((args.image_size, args.image_size)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.5),
+        transforms.RandomRotation(degrees=20),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.1, hue=0.05),
         transforms.ToTensor(),
         transforms.Lambda(lambda x: x * 255)
     ])
 
     transform_train_seg = transforms.Compose([
-        transforms.Resize((args.out_size,args.out_size), interpolation=transforms.InterpolationMode.NEAREST),
+        transforms.Resize((args.out_size, args.out_size), interpolation=transforms.InterpolationMode.NEAREST),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.5),
+        transforms.RandomRotation(degrees=20),
         transforms.ToTensor(),
     ])
 
@@ -41,7 +48,7 @@ def get_dataloader(args):
     ])
 
     transform_test_seg = transforms.Compose([
-        transforms.Resize((args.out_size,args.out_size), interpolation=transforms.InterpolationMode.NEAREST),
+        transforms.Resize((args.out_size, args.out_size), interpolation=transforms.InterpolationMode.NEAREST),
         transforms.ToTensor(),
     ])
     

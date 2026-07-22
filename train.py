@@ -49,8 +49,8 @@ def main():
         weights = torch.load(args.pretrain)
         net.load_state_dict(weights,strict=False)
 
-    optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
-    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5) #learning rate decay
+    optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=1e-4, amsgrad=False)
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=20, T_mult=2, eta_min=1e-7)
 
     best_tol = 0.0
 
@@ -99,6 +99,8 @@ def main():
     # checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
 
     '''begain training'''
+    patience = args.patience
+    epochs_no_improve = 0
 
     for epoch in range(settings.EPOCH):
 
@@ -117,10 +119,22 @@ def main():
 
         net.train()
         time_start = time.time()
+        
+        # Linear warmup for first `warm` epochs
+        if epoch < args.warm:
+            warmup_factor = (epoch + 1) / args.warm
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = args.lr * warmup_factor
+
         loss = function.train_sam(args, net, optimizer, nice_train_loader, epoch, writer, vis = args.vis)
         logger.info(f'Train loss: {loss} || @ epoch {epoch}.')
         time_end = time.time()
         print('time_for_training ', time_end - time_start)
+
+        # Step cosine scheduler after warmup
+        if epoch >= args.warm:
+            scheduler.step()
+        logger.info(f'Current LR: {optimizer.param_groups[0]["lr"]:.2e} || @ epoch {epoch}.')
 
         net.eval()
         if epoch and epoch % args.val_freq == 0 or epoch == settings.EPOCH-1:
@@ -144,6 +158,7 @@ def main():
             if edice > best_tol:
                 best_tol = edice
                 is_best = True
+                epochs_no_improve = 0
 
                 save_checkpoint(
                     {
@@ -160,6 +175,11 @@ def main():
                 )
             else:
                 is_best = False
+                epochs_no_improve += 1
+
+            if epochs_no_improve >= patience:
+                logger.info(f'Early stopping at epoch {epoch}. Best DICE: {best_tol:.6f}')
+                break
 
     # writer.close()
 
