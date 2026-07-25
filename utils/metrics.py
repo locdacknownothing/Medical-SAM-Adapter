@@ -73,11 +73,50 @@ def postprocess_small_regions(masks, min_area: int=100):
     masks = np.array(new_masks).astype('int32')
     return masks
 
+def find_optimal_threshold(all_preds, all_masks, n_thresholds=256):
+    '''Find the optimal threshold that maximizes Dice coefficient globally.
+    
+    Two-pass compatible: accepts lists of (N, C, H, W) sigmoid-activated 
+    prediction tensors and mask tensors collected across the entire dataset.
+    Uses dice_coeff() for consistent evaluation.
+    
+    Args:
+        all_preds: list of sigmoid-activated prediction tensors, each (N, C, H, W)
+        all_masks: list of ground truth tensors, each (N, C, H, W)
+        n_thresholds: number of candidate thresholds to sweep
+    
+    Returns: a tuple containing the single optimal threshold, e.g. (optimal_thresh,)
+    '''
+    thresholds = np.linspace(0, 1, n_thresholds)
+    dice_sums = np.zeros(n_thresholds)
+    total_count = 0  # total (batch * channels) seen
+    
+    for pred, mask in zip(all_preds, all_masks):
+        b, c, h, w = pred.shape
+        for i, thresh in enumerate(thresholds):
+            hard_pred = (pred > thresh).float()
+            hard_mask = (mask > thresh).float()
+            for ch in range(c):
+                p = hard_pred[:, ch, :, :]
+                m = hard_mask[:, ch, :, :]
+                # dice_coeff returns 1.0 for empty vs empty due to epsilon;
+                # treat this degenerate case as 0 instead
+                if p.sum() == 0 and m.sum() == 0:
+                    dice_val = 0.0
+                else:
+                    dice_val = dice_coeff(p, m).item()
+                dice_sums[i] += dice_val * b  # weight by batch size
+        total_count += b * c
+    
+    dice_avg = dice_sums / total_count
+    optimal_threshold = thresholds[dice_avg.argmax()]
+    return (optimal_threshold,)
+
 def eval_seg(pred,true_mask_p,threshold, min_area=100):
     '''
-    threshold: a int or a tuple of int
-    masks: [b,2,h,w]
-    pred: [b,2,h,w]
+    threshold: a tuple of int
+    masks: [b,c,h,w]
+    pred: [b,c,h,w]
     '''
     b, c, h, w = pred.size()
     pred = F.sigmoid(pred)
@@ -102,7 +141,7 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
             disc_dice += dice_coeff(vpred[:,0,:,:], gt_vmask_p[:,0,:,:]).item()
             cup_dice += dice_coeff(vpred[:,1,:,:], gt_vmask_p[:,1,:,:]).item()
             
-        processed_pred = (pred > 0.5).to(pred.dtype)
+        processed_pred = (pred > threshold[0]).to(pred.dtype)
         return (iou_d / len(threshold), iou_c / len(threshold), disc_dice / len(threshold), cup_dice / len(threshold)), processed_pred
     elif c > 2: # for multi-class segmentation > 2 classes
         ious = [0] * c
@@ -121,7 +160,7 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
                 '''dice for torch'''
                 dices[i] += dice_coeff(vpred[:,i,:,:], gt_vmask_p[:,i,:,:]).item()
             
-        processed_pred = (pred > 0.5).to(pred.dtype)
+        processed_pred = (pred > threshold[0]).to(pred.dtype)
         return tuple(np.array(ious + dices) / len(threshold)), processed_pred
     else:
         eiou, edice = 0,0
@@ -171,8 +210,8 @@ def eval_seg(pred,true_mask_p,threshold, min_area=100):
             ef1 += f1_score(y_test_flat, y_pred_flat, zero_division=0)
             ejaccard += jaccard_score(y_test_flat, y_pred_flat, zero_division=0)
 
-        # Get post-processed prediction mask at threshold 0.5
-        vpred_vis = (pred > 0.5).float()
+        # Get post-processed prediction mask at optimal threshold
+        vpred_vis = (pred > threshold[0]).float()
         processed_pred = vpred_vis
         if min_area > 0:
             disc_pred_vis = vpred_vis.cpu()[:,0,:,:].numpy().astype('int32')

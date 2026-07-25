@@ -234,7 +234,7 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
             if vis:
                 if ind % vis == 0:
                     namecat = 'Train'
-                    for na in name[:2]:
+                    for na in name:
                         namecat = namecat + na.split('/')[-1].split('.')[0] + '+'
                     vis_image(origin_imgs/255,pred,masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
 
@@ -254,7 +254,7 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
     tot = 0
     hard = 0
     # threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
-    threshold = (0.5,)
+    # threshold = (0.5,)
     GPUdevice = torch.device('cuda:' + str(args.gpu_device))
     device = GPUdevice
 
@@ -264,6 +264,9 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
         lossfunc = get_loss(args.loss_func)
 
     with tqdm(total=n_val, desc='Validation round', unit='batch', leave=False) as pbar:
+        # ====== PASS 1: Forward pass, compute loss, collect predictions ======
+        cached_batches = []
+
         for ind, pack in enumerate(val_loader):
             print(pack['image_meta_dict'])
             imgsw = pack['image'].to(dtype = torch.float32, device = GPUdevice)
@@ -391,24 +394,49 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
 
                     tot += lossfunc(pred, masks) * cur_bsz
 
-                    
-                    temp, processed_pred = eval_seg(pred, masks, threshold, min_area=0)
-                    temp = tuple([number * cur_bsz for number in temp])
 
-                    # Adapt for additional metrics
-                    if len(temp) > len(mix_res):
-                        mix_res = (0,)*len(temp)
-                    mix_res = tuple([sum(a) for a in zip(mix_res, temp)])
-
-                    '''vis images'''
-                    if args.vis is not None:
-                        namecat = 'Test'
-                        for na in name[:2]:
-                            img_name = na.split('/')[-1].split('.')[0]
-                            namecat = namecat + img_name + '+'
-                        vis_image(origin_imgs/255,processed_pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
+                    # Cache predictions for two-pass threshold optimization
+                    cached_batches.append({
+                        'pred': pred.cpu(),
+                        'masks': masks.cpu(),
+                        'cur_bsz': cur_bsz,
+                        'origin_imgs': origin_imgs.cpu(),
+                        'showp': showp.cpu() if torch.is_tensor(showp) else showp,
+                        'name': name,
+                    })
 
             pbar.update()
+
+    # ====== Find optimal threshold across all cached predictions ======
+    sigmoid_preds = [F.sigmoid(item['pred']) for item in cached_batches]
+    all_masks_cached = [item['masks'] for item in cached_batches]
+    threshold = find_optimal_threshold(sigmoid_preds, all_masks_cached)
+
+    # ====== PASS 2: Evaluate metrics with optimal threshold ======
+    for item in cached_batches:
+        pred = item['pred'].to(GPUdevice)
+        masks = item['masks'].to(GPUdevice)
+        cur_bsz = item['cur_bsz']
+
+        temp, processed_pred = eval_seg(pred, masks, threshold=threshold, min_area=0)
+        temp = tuple([number * cur_bsz for number in temp])
+
+        # Adapt for additional metrics
+        if len(temp) > len(mix_res):
+            mix_res = (0,)*len(temp)
+        mix_res = tuple([sum(a) for a in zip(mix_res, temp)])
+
+        '''vis images'''
+        if args.vis is not None:
+            namecat = 'Test'
+            for na in item['name']:
+                img_name = na.split('/')[-1].split('.')[0]
+                namecat = namecat + img_name + '+'
+            origin_imgs = item['origin_imgs'].to(GPUdevice)
+            showp = item['showp']
+            if torch.is_tensor(showp):
+                showp = showp.to(GPUdevice)
+            vis_image(origin_imgs/255, processed_pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
 
     if args.evl_chunk:
         n_val = n_val * (imgsw.size(-1) // evl_ch)
