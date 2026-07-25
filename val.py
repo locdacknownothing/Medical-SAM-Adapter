@@ -48,37 +48,33 @@ def main():
     net = get_network(args, args.net, use_gpu=args.gpu, gpu_device=GPUdevice, distribution = args.distributed)
 
     '''load pretrained model'''
-    assert args.weights != 0
-    print(f'=> resuming from {args.weights}')
-    assert os.path.exists(args.weights)
-    checkpoint_file = os.path.join(args.weights)
-    assert os.path.exists(checkpoint_file)
-    loc = 'cuda:{}'.format(args.gpu_device)
-    checkpoint = torch.load(checkpoint_file, map_location=loc)
-    start_epoch = checkpoint.get('epoch', -1)
-    best_tol = checkpoint.get('best_tol', -1)
+    # assert args.weights != 0
+    if args.weights:
+        print(f'=> resuming from {args.weights}')
+        assert os.path.exists(args.weights)
+        checkpoint_file = os.path.join(args.weights)
+        assert os.path.exists(checkpoint_file)
+        loc = 'cuda:{}'.format(args.gpu_device)
+        checkpoint = torch.load(checkpoint_file, map_location=loc)
+        start_epoch = checkpoint.get('epoch', -1)
+        # best_tol = checkpoint.get('best_tol', -1)
 
-    state_dict = checkpoint['state_dict']
-    if args.distributed != 'none':
-        from collections import OrderedDict
-        new_state_dict = OrderedDict()
-        for k, v in state_dict.items():
-            # name = k[7:] # remove `module.`
-            name = 'module.' + k
-            new_state_dict[name] = v
-        # load params
+        state_dict = checkpoint['state_dict']
+        if args.distributed != 'none':
+            from collections import OrderedDict
+            new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                # name = k[7:] # remove `module.`
+                name = 'module.' + k
+                new_state_dict[name] = v
+            # load params
+        else:
+            new_state_dict = state_dict
+
+        net.load_state_dict(new_state_dict, strict = False)
     else:
-        new_state_dict = state_dict
-
-    net.load_state_dict(new_state_dict, strict = False)
-
-    # args.path_helper = checkpoint['path_helper']
-    # logger = create_logger(args.path_helper['log_path'])
-    # print(f'=> loaded checkpoint {checkpoint_file} (epoch {start_epoch})')
-
-    # args.path_helper = set_log_dir('logs', args.exp_name)
-    # logger = create_logger(args.path_helper['log_path'])
-    # logger.info(args)
+        print(f'Zero-shot from {args.sam_ckpt}')
+        start_epoch = -1
 
     args.path_helper = set_log_dir('logs', args.exp_name)
     logger = create_logger(args.path_helper['log_path'])
@@ -91,7 +87,7 @@ def main():
     best_acc = 0.0
     best_tol = 1e4
 
-    if args.mod == 'sam_adpt':
+    if args.mod in ['sam_adpt', 'sam']:
         net.eval()
 
         if args.dataset != 'REFUGE':
