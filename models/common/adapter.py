@@ -5,10 +5,10 @@ from .convnext import ConvNeXtBlock,ConvNeXtLayerNorm
 
 
 class Adapter(nn.Module):
-    def __init__(self, D_features, mlp_ratio=0.25, act_layer=nn.GELU, skip_connect=True):
+    def __init__(self, D_features, mlp_ratio=0.25, act_layer=nn.GELU, skip_connect=True, hidden_dim=None):
         super().__init__()
         self.skip_connect = skip_connect
-        D_hidden_features = int(D_features * mlp_ratio)
+        D_hidden_features = hidden_dim if hidden_dim is not None else int(D_features * mlp_ratio)
         self.act = act_layer()
         self.D_fc1 = nn.Linear(D_features, D_hidden_features)
         self.D_fc2 = nn.Linear(D_hidden_features, D_features)
@@ -32,10 +32,10 @@ class ConvAdapter(nn.Module):
     Replaces the original linear adapter with:
     1x1 Conv (Down) -> ConvNeXtBlock -> CBAM -> 1x1 Conv (Up)
     """
-    def __init__(self, D_features, mlp_ratio=0.25, skip_connect=True):
+    def __init__(self, D_features, mlp_ratio=0.25, skip_connect=True, hidden_dim=None):
         super().__init__()
         self.skip_connect = skip_connect
-        D_hidden = int(D_features * mlp_ratio)
+        D_hidden = hidden_dim if hidden_dim is not None else int(D_features * mlp_ratio)
         
         # 1×1 pointwise down-projection
         self.conv_down = nn.Conv2d(D_features, D_hidden, kernel_size=1)

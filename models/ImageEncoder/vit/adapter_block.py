@@ -54,16 +54,13 @@ class AdapterBlock(nn.Module):
             input_size=input_size if window_size == 0 else (window_size, window_size),
         )
 
-        if(args.mid_dim != None):
-            adapter_dim = args.mid_dim
-        else:
-            adapter_dim = dim
+        adapter_hidden_dim = args.mid_dim  # None by default, overrides bottleneck if set
 
         AdapterClass = ConvAdapter if getattr(args, 'adapter_type', 'linear') == 'conv' else Adapter
-        self.MLP_Adapter = AdapterClass(adapter_dim, skip_connect=False)  # MLP-adapter, no skip connection
-        self.Space_Adapter = AdapterClass(adapter_dim)  # with skip connection
+        self.MLP_Adapter = AdapterClass(dim, skip_connect=False, hidden_dim=adapter_hidden_dim)  # MLP-adapter, no skip connection
+        self.Space_Adapter = AdapterClass(dim, hidden_dim=adapter_hidden_dim)  # with skip connection
         self.scale = scale
-        self.Depth_Adapter = AdapterClass(adapter_dim, skip_connect=False)  # no skip connection
+        self.Depth_Adapter = AdapterClass(dim, skip_connect=False, hidden_dim=adapter_hidden_dim)  # no skip connection
         self.norm2 = norm_layer(dim)
         self.mlp = MLPBlock(embedding_dim=dim, mlp_dim=int(dim * mlp_ratio), act=act_layer)
 

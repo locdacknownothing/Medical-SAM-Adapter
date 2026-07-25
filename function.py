@@ -330,57 +330,69 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                 '''test'''
                 with torch.no_grad():
                     origin_imgs = imgs.clone()
-                    imgs = net.preprocess(imgs)
-                    imge= net.image_encoder(imgs)
-                    if args.net == 'sam' or args.net == 'mobile_sam':
-                        se, de = net.prompt_encoder(
-                            points=pt,
-                            boxes=None,
-                            masks=None,
-                        )
-                    elif args.net == "efficient_sam":
-                        coords_torch,labels_torch = transform_prompt(coords_torch,labels_torch,h,w)
-                        se = net.prompt_encoder(
-                            coords=coords_torch,
-                            labels=labels_torch,
-                        )
 
-                    if args.net == 'sam':
-                        pred, _ = net.mask_decoder(
-                            image_embeddings=imge,
-                            image_pe=net.prompt_encoder.get_dense_pe(), 
-                            sparse_prompt_embeddings=se,
-                            dense_prompt_embeddings=de, 
-                            multimask_output=(args.multimask_output > 1),
-                        )
-                    elif args.net == 'mobile_sam':
-                        pred, _ = net.mask_decoder(
-                            image_embeddings=imge,
-                            image_pe=net.prompt_encoder.get_dense_pe(), 
-                            sparse_prompt_embeddings=se,
-                            dense_prompt_embeddings=de, 
-                            multimask_output=False,
-                        )
-                    elif args.net == "efficient_sam":
-                        se = se.view(
-                            se.shape[0],
-                            1,
-                            se.shape[1],
-                            se.shape[2],
-                        )
-                        pred, _ = net.mask_decoder(
-                            image_embeddings=imge,
-                            image_pe=net.prompt_encoder.get_dense_pe(), 
-                            sparse_prompt_embeddings=se,
-                            multimask_output=False,
-                        )
+                    def _forward_pass(input_imgs):
+                        """Run a single forward pass through the model."""
+                        proc = net.preprocess(input_imgs)
+                        img_emb = net.image_encoder(proc)
+                        if args.net == 'sam' or args.net == 'mobile_sam':
+                            sp, dp = net.prompt_encoder(
+                                points=pt,
+                                boxes=None,
+                                masks=None,
+                            )
+                        elif args.net == "efficient_sam":
+                            coords_torch_t, labels_torch_t = transform_prompt(coords_torch, labels_torch, h, w)
+                            sp = net.prompt_encoder(
+                                coords=coords_torch_t,
+                                labels=labels_torch_t,
+                            )
+                            dp = None
 
-                    # Resize to the ordered output size
-                    pred = F.interpolate(pred,size=(args.out_size,args.out_size), mode="bilinear", align_corners=False)
+                        if args.net == 'sam':
+                            out, _ = net.mask_decoder(
+                                image_embeddings=img_emb,
+                                image_pe=net.prompt_encoder.get_dense_pe(),
+                                sparse_prompt_embeddings=sp,
+                                dense_prompt_embeddings=dp,
+                                multimask_output=(args.multimask_output > 1),
+                            )
+                        elif args.net == 'mobile_sam':
+                            out, _ = net.mask_decoder(
+                                image_embeddings=img_emb,
+                                image_pe=net.prompt_encoder.get_dense_pe(),
+                                sparse_prompt_embeddings=sp,
+                                dense_prompt_embeddings=dp,
+                                multimask_output=False,
+                            )
+                        elif args.net == "efficient_sam":
+                            sp = sp.view(sp.shape[0], 1, sp.shape[1], sp.shape[2])
+                            out, _ = net.mask_decoder(
+                                image_embeddings=img_emb,
+                                image_pe=net.prompt_encoder.get_dense_pe(),
+                                sparse_prompt_embeddings=sp,
+                                multimask_output=False,
+                            )
+                        return F.interpolate(out, size=(args.out_size, args.out_size), mode="bilinear", align_corners=False)
+
+                    # Original prediction
+                    pred = _forward_pass(imgs)
+
+                    # Test-Time Augmentation (TTA)
+                    if getattr(args, 'tta', False):
+                        # Horizontal flip
+                        pred_hflip = _forward_pass(torch.flip(imgs, [3]))
+                        pred_hflip = torch.flip(pred_hflip, [3])
+                        # Vertical flip
+                        pred_vflip = _forward_pass(torch.flip(imgs, [2]))
+                        pred_vflip = torch.flip(pred_vflip, [2])
+                        # Average logits
+                        pred = (pred + pred_hflip + pred_vflip) / 3.0
+
                     tot += lossfunc(pred, masks) * cur_bsz
 
                     
-                    temp, processed_pred = eval_seg(pred, masks, threshold, min_area=20)
+                    temp, processed_pred = eval_seg(pred, masks, threshold, min_area=0)
                     temp = tuple([number * cur_bsz for number in temp])
 
                     # Adapt for additional metrics

@@ -111,10 +111,7 @@ class TinyViTAdapterBlock(nn.Module):
         self.window_size = window_size
         self.mlp_ratio = mlp_ratio
 
-        if(args.mid_dim != None):
-            adapter_dim = args.mid_dim
-        else:
-            adapter_dim = dim
+        adapter_hidden_dim = args.mid_dim  # None by default, overrides bottleneck if set
 
         self.drop_path = DropPath(
             drop_path) if drop_path > 0. else nn.Identity()
@@ -125,15 +122,13 @@ class TinyViTAdapterBlock(nn.Module):
         window_resolution = (window_size, window_size)
         self.attn = Attention(dim, head_dim, num_heads,
                               attn_ratio=1, resolution=window_resolution)
-
         mlp_hidden_dim = int(dim * mlp_ratio)
         mlp_activation = activation
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim,
                        act_layer=mlp_activation, drop=drop)
-
-        self.MLP_Adapter = Adapter(adapter_dim, skip_connect=False)  # MLP-adapter, no skip connection
-        self.Space_Adapter = Adapter(adapter_dim)  # with skip connection
-        self.Depth_Adapter = Adapter(adapter_dim, skip_connect=False)  # no skip connection
+        self.MLP_Adapter = Adapter(dim, skip_connect=False, hidden_dim=adapter_hidden_dim)  # MLP-adapter, no skip connection
+        self.Space_Adapter = Adapter(dim, hidden_dim=adapter_hidden_dim)  # with skip connection
+        self.Depth_Adapter = Adapter(dim, skip_connect=False, hidden_dim=adapter_hidden_dim)  # no skip connection
 
         pad = local_conv_size // 2
         self.local_conv = Conv2d_BN(

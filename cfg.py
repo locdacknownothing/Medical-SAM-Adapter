@@ -55,6 +55,8 @@ def parse_args():
     parser.add_argument('-adapter_type', type=str, default='linear', choices=['linear', 'conv'], help='Adapter type: linear (original) or conv (convolutional bottleneck)')
     parser.add_argument('-convnext_ver', type=int, default=None, choices=[1, 2], help='ConvNeXt version: 1 or 2')
     parser.add_argument('-patience', type=int, default=30, help='Early stopping patience')
+    parser.add_argument('-point_num', type=int, default=5, help='Number of point prompts per image')
+    parser.add_argument('-tta', action='store_true', default=False, help='Enable test-time augmentation during validation')
     opt = parser.parse_args()
 
     return opt

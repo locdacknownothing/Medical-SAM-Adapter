@@ -137,8 +137,8 @@ def get_dataloader(args):
 
     elif args.dataset == 'DRIVE':
         '''DRIVE data'''
-        train_dataset = DRIVE(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
-        test_dataset = DRIVE(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
+        train_dataset = DRIVE(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training', point_num=args.point_num)
+        test_dataset = DRIVE(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test', point_num=args.point_num)
 
         nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True)
         nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False)
