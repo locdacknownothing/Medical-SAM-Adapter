@@ -60,7 +60,7 @@ class AdapterBlock(nn.Module):
         self.MLP_Adapter = AdapterClass(dim, skip_connect=False, hidden_dim=adapter_hidden_dim)  # MLP-adapter, no skip connection
         self.Space_Adapter = AdapterClass(dim, hidden_dim=adapter_hidden_dim)  # with skip connection
         self.scale = scale
-        self.Depth_Adapter = AdapterClass(dim, skip_connect=False, hidden_dim=adapter_hidden_dim)  # no skip connection
+        # self.Depth_Adapter = AdapterClass(dim, skip_connect=False, hidden_dim=adapter_hidden_dim)  # no skip connection
         self.norm2 = norm_layer(dim)
         self.mlp = MLPBlock(embedding_dim=dim, mlp_dim=int(dim * mlp_ratio), act=act_layer)
 
@@ -74,27 +74,27 @@ class AdapterBlock(nn.Module):
             x, pad_hw = window_partition(x, self.window_size)
 
          ## 3d branch
-        if self.args.thd: 
-            hh, ww = x.shape[1], x.shape[2]
-            if self.args.chunk:
-                depth = self.args.chunk
-            else:
-                depth = x.shape[0]
-            xd = rearrange(x, '(b d) h w c -> (b h w) d c ', d=depth)
-            # xd = rearrange(xd, '(b d) n c -> (b n) d c', d=self.in_chans)
-            xd = self.norm1(xd)
-            dh, _ = closest_numbers(depth)
-            xd = rearrange(xd, 'bhw (dh dw) c -> bhw dh dw c', dh= dh)
-            xd = self.Depth_Adapter(self.attn(xd))
-            xd = rearrange(xd, '(b n) dh dw c ->(b dh dw) n c', n= hh * ww )
+        # if self.args.thd: 
+        #     hh, ww = x.shape[1], x.shape[2]
+        #     if self.args.chunk:
+        #         depth = self.args.chunk
+        #     else:
+        #         depth = x.shape[0]
+        #     xd = rearrange(x, '(b d) h w c -> (b h w) d c ', d=depth)
+        #     # xd = rearrange(xd, '(b d) n c -> (b n) d c', d=self.in_chans)
+        #     xd = self.norm1(xd)
+        #     dh, _ = closest_numbers(depth)
+        #     xd = rearrange(xd, 'bhw (dh dw) c -> bhw dh dw c', dh= dh)
+        #     xd = self.Depth_Adapter(self.attn(xd))
+        #     xd = rearrange(xd, '(b n) dh dw c ->(b dh dw) n c', n= hh * ww )
 
         x = self.norm1(x)
         x = self.attn(x)
         x = self.Space_Adapter(x)
 
-        if self.args.thd:
-            xd = rearrange(xd, 'b (hh ww) c -> b  hh ww c', hh= hh )
-            x = x + xd
+        # if self.args.thd:
+        #     xd = rearrange(xd, 'b (hh ww) c -> b  hh ww c', hh= hh )
+        #     x = x + xd
 
         # Reverse window partition
         if self.window_size > 0:
