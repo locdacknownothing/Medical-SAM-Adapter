@@ -428,15 +428,18 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
 
         '''vis images'''
         if args.vis is not None:
-            namecat = 'Test'
-            for na in item['name']:
-                img_name = na.split('/')[-1].split('.')[0]
-                namecat = namecat + img_name + '+'
-            origin_imgs = item['origin_imgs'].to(GPUdevice)
-            showp = item['showp']
-            if torch.is_tensor(showp):
-                showp = showp.to(GPUdevice)
-            vis_image(origin_imgs/255, processed_pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
+            if args.vis == 1:
+                vis_pred_mask(processed_pred, args.path_helper['sample_path'], item['name'], reverse=False)
+            else:
+                namecat = 'Test'
+                for na in item['name']:
+                    img_name = na.split('/')[-1].split('.')[0]
+                    namecat = namecat + img_name + '+'
+                origin_imgs = item['origin_imgs'].to(GPUdevice)
+                showp = item['showp']
+                if torch.is_tensor(showp):
+                    showp = showp.to(GPUdevice)
+                vis_image(origin_imgs/255, processed_pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
 
     if args.evl_chunk:
         n_val = n_val * (imgsw.size(-1) // evl_ch)

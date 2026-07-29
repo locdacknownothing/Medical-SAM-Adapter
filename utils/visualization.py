@@ -226,3 +226,36 @@ def vis_image(imgs, pred_masks, gt_masks, save_path, reverse = False, points = N
 
     return
 
+
+def vis_pred_mask(pred_masks, save_dir, names, reverse=False):
+    """
+    Save prediction masks only, one image file per sample in the batch,
+    named after the sample name provided in `names` (from image_meta_dict).
+    """
+    b, c, h, w = pred_masks.size()
+
+    if torch.max(pred_masks) > 1 or torch.min(pred_masks) < 0:
+        pred_masks = torch.sigmoid(pred_masks)
+
+    if reverse:
+        pred_masks = 1 - pred_masks
+    else:
+        pred_masks = pred_masks.clone()
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    for i in range(b):
+        name = names[i]
+        if not (name.endswith('.png') or name.endswith('.jpg') or name.endswith('.jpeg')):
+            filename = f"{name}.png"
+        else:
+            filename = name
+
+        fp = os.path.join(save_dir, filename)
+        pred_sample = pred_masks[i]
+        if c == 1:
+            pred_sample = pred_sample.expand(3, h, w)
+
+        vutils.save_image(pred_sample, fp=fp)
+
+
