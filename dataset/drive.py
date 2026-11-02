@@ -36,12 +36,6 @@ class DRIVE(Dataset):
         img = Image.open(img_path).convert('RGB')
         mask = Image.open(msk_path).convert('L')
 
-        if self.prompt == 'click':
-            pt, point_label = init_point_sampling(np.array(mask) / 255, get_point=self.point_num)
-        else:
-            pt = torch.zeros(self.point_num, 2)
-            point_label = torch.zeros(self.point_num, dtype=torch.int)
-
         if self.transform:
             state = torch.get_rng_state()
             img = self.transform(img)
@@ -49,6 +43,13 @@ class DRIVE(Dataset):
 
             if self.transform_msk:
                 mask = self.transform_msk(mask).int()
+
+        if self.prompt == 'click':
+            mask_for_pt = mask.squeeze(0) if isinstance(mask, torch.Tensor) else np.array(mask) / 255
+            pt, point_label = init_point_sampling(mask_for_pt, get_point=self.point_num)
+        else:
+            pt = torch.zeros(self.point_num, 2)
+            point_label = torch.zeros(self.point_num, dtype=torch.int)
 
         name = name.split('/')[-1].split(".jpg")[0]
         image_meta_dict = {'filename_or_obj': name}

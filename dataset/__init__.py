@@ -128,8 +128,8 @@ def get_dataloader(args):
         # nice_train_loader = DataLoader(dataset, batch_size=args.b, sampler=train_sampler, num_workers=8, pin_memory=True)
         # nice_test_loader = DataLoader(dataset, batch_size=args.b, sampler=test_sampler, num_workers=8, pin_memory=True)
         
-        train_dataset = STARE_AUG(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
-        test_dataset = STARE_AUG(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
+        train_dataset = STARE_AUG(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training', point_num=args.point_num)
+        test_dataset = STARE_AUG(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test', point_num=args.point_num)
 
         nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True)
         nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False)
@@ -145,8 +145,8 @@ def get_dataloader(args):
 
     elif args.dataset == 'CHASE':
         '''CHASE data'''
-        train_dataset = CHASE(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
-        test_dataset = CHASE(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
+        train_dataset = CHASE(args, data_path = args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training', point_num=args.point_num)
+        test_dataset = CHASE(args, data_path = args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test', point_num=args.point_num)
 
         nice_train_loader = DataLoader(train_dataset, batch_size=args.b, shuffle=True)
         nice_test_loader = DataLoader(test_dataset, batch_size=args.b, shuffle=False)

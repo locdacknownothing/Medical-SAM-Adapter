@@ -4,6 +4,10 @@ import torch
 from utils import args, device
 
 def random_click(mask, point_labels = 1):
+    if isinstance(mask, torch.Tensor):
+        mask = mask.numpy()
+    if mask.ndim == 3:
+        mask = mask.squeeze(0)
     # check if all masks are black
     max_label = max(set(mask.flatten()))
     if max_label == 0:
@@ -74,6 +78,10 @@ def init_point_sampling(mask, get_point=1):
 
     if isinstance(mask, torch.Tensor):
         mask = mask.numpy()
+    if mask.ndim == 3:
+        mask = mask.squeeze(0)
+    if mask.max() > 1:
+        mask = (mask > 127).astype(np.int32)
         
     fg_coords = np.argwhere(mask == 1)[:,::-1]
     bg_coords = np.argwhere(mask == 0)[:,::-1]
