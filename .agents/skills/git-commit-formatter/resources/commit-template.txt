@@ -1,0 +1,9 @@
+# <type>(<scope>): <short summary in imperative mood, <= 50-72 chars>
+# |<----  Try to limit header line to 50-72 characters  ---->|
+
+# [Optional Body: Explain WHY this change was made, not HOW]
+# |<----  Wrap body lines at 72 characters  ------------->|
+
+# [Optional Footer(s): Breaking changes or issue references]
+# BREAKING CHANGE: <description of breaking change>
+# Fixes #<issue number>
