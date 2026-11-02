@@ -78,6 +78,38 @@ def main():
     logger = create_logger(args.path_helper['log_path'])
     logger.info(args)
 
+    function.configure_trainable_params(args, net)
+    total_params = sum(p.numel() for p in net.parameters())
+    trainable_params = sum(p.numel() for p in net.parameters() if p.requires_grad)
+    sub_counts = OrderedDict()
+    if hasattr(net, 'image_encoder'):
+        for key in function.TRAINABLE_ENCODER_KEYS:
+            c = sum(p.numel() for n, p in net.image_encoder.named_parameters() if p.requires_grad and key in n)
+            if (
+                c > 0
+                or key == "Adapter"
+                or (key == "mlfa" and getattr(args, 'multilayer_vit', False))
+                or (key == "vascular_stem" and getattr(args, 'hq_decoder', False))
+            ):
+                sub_counts[f'image_encoder.{key}'] = c
+        neck_c = sum(p.numel() for n, p in net.image_encoder.named_parameters() if p.requires_grad and 'neck' in n and not any(k in n for k in function.TRAINABLE_ENCODER_KEYS))
+        sub_counts['image_encoder.neck'] = neck_c
+    for sub_name in ['mask_decoder', 'prompt_encoder']:
+        if hasattr(net, sub_name):
+            sub_mod = getattr(net, sub_name)
+            sub_counts[sub_name] = sum(p.numel() for p in sub_mod.parameters() if p.requires_grad)
+            if sub_name == 'mask_decoder' and hasattr(sub_mod, 'hq_refiner'):
+                hq_ref_c = sum(p.numel() for p in sub_mod.hq_refiner.parameters() if p.requires_grad)
+                if hasattr(sub_mod, 'hq_token'):
+                    hq_ref_c += sum(p.numel() for p in sub_mod.hq_token.parameters() if p.requires_grad)
+                sub_counts['mask_decoder.hq_refiner'] = hq_ref_c
+            if sub_name == 'prompt_encoder' and hasattr(sub_mod, 'hybrid_prompt_gen'):
+                sub_counts['prompt_encoder.hybrid_prompt_gen'] = sum(
+                    p.numel() for p in sub_mod.hybrid_prompt_gen.parameters() if p.requires_grad
+                )
+    breakdown_str = ", ".join(f"{k}={v:,}" for k, v in sub_counts.items())
+    logger.info(f"Trainable params summary: total_trainable={trainable_params:,} / total={total_params:,} ({100.0 * trainable_params / max(total_params, 1):.2f}%) | {breakdown_str}")
+
     nice_train_loader, nice_test_loader = get_dataloader(args)
 
     '''checkpoint path and tensorboard'''
@@ -102,20 +134,8 @@ def main():
     patience = args.patience
     epochs_no_improve = 0
 
-    for epoch in range(settings.EPOCH):
-
-        if epoch < 5:
-            if args.dataset != 'REFUGE':
-                tol, metrics = function.validation_sam(args, nice_test_loader, epoch, net, writer)
-                eiou, edice = metrics[:2]
-                if len(metrics) > 2:
-                    eaccuracy, esensitivity, especificity, eauc, emcc, ef1, ejaccard = metrics[2:]
-    
-                logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {epoch}.')
-                logger.info(f'ACC: {eaccuracy}, SEN: {esensitivity}, SPE: {especificity}, AUC: {eauc}, MCC: {emcc}, F1: {ef1}, JACC: {ejaccard}.')
-            else:
-                tol, (eiou_cup, eiou_disc, edice_cup, edice_disc) = function.validation_sam(args, nice_test_loader, epoch, net, writer)
-                logger.info(f'Total score: {tol}, IOU_CUP: {eiou_cup}, IOU_DISC: {eiou_disc}, DICE_CUP: {edice_cup}, DICE_DISC: {edice_disc} || @ epoch {epoch}.')
+    max_epochs = int(os.environ.get('SMOKE_MAX_EPOCHS', settings.EPOCH))
+    for epoch in range(max_epochs):
 
         net.train()
         time_start = time.time()
@@ -137,7 +157,7 @@ def main():
         logger.info(f'Current LR: {optimizer.param_groups[0]["lr"]:.2e} || @ epoch {epoch}.')
 
         net.eval()
-        if epoch and epoch % args.val_freq == 0 or epoch == settings.EPOCH-1:
+        if epoch < 5 or (epoch and epoch % args.val_freq == 0) or epoch == max_epochs - 1:
             if args.dataset != 'REFUGE':
                 tol, metrics = function.validation_sam(args, nice_test_loader, epoch, net, writer)
                 eiou, edice = metrics[:2]

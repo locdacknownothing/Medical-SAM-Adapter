@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-from ...common import Adapter, ConvAdapter, LayerNorm2d
+from ...common import Adapter, ConvAdapter, TubularConvAdapter, LayerNorm2d
 
 
 class AdapterBlock(nn.Module):
@@ -56,7 +56,13 @@ class AdapterBlock(nn.Module):
 
         adapter_hidden_dim = args.mid_dim  # None by default, overrides bottleneck if set
 
-        AdapterClass = ConvAdapter if getattr(args, 'adapter_type', 'linear') == 'conv' else Adapter
+        adapter_type = getattr(args, 'adapter_type', 'linear')
+        if adapter_type == 'tubular':
+            AdapterClass = TubularConvAdapter
+        elif adapter_type == 'conv':
+            AdapterClass = ConvAdapter
+        else:
+            AdapterClass = Adapter
         self.MLP_Adapter = AdapterClass(dim, skip_connect=False, hidden_dim=adapter_hidden_dim)  # MLP-adapter, no skip connection
         self.Space_Adapter = AdapterClass(dim, hidden_dim=adapter_hidden_dim)  # with skip connection
         self.scale = scale
@@ -88,17 +94,31 @@ class AdapterBlock(nn.Module):
             xd = self.Depth_Adapter(self.attn(xd))
             xd = rearrange(xd, '(b n) dh dw c ->(b dh dw) n c', n= hh * ww )
 
-        x = self.norm1(x)
-        x = self.attn(x)
-        x = self.Space_Adapter(x)
+        if getattr(self.args, 'adapter_type', 'linear') == 'tubular':
+            x = self.norm1(x)
+            x = self.attn(x)
 
-        if self.args.thd:
-            xd = rearrange(xd, 'b (hh ww) c -> b  hh ww c', hh= hh )
-            x = x + xd
+            if self.args.thd:
+                xd = rearrange(xd, 'b (hh ww) c -> b  hh ww c', hh= hh )
+                x = x + xd
 
-        # Reverse window partition
-        if self.window_size > 0:
-            x = window_unpartition(x, self.window_size, pad_hw, (H, W))
+            # Reverse window partition BEFORE Space_Adapter so tubular strip convs see the continuous feature map
+            if self.window_size > 0:
+                x = window_unpartition(x, self.window_size, pad_hw, (H, W))
+
+            x = self.Space_Adapter(x)
+        else:
+            x = self.norm1(x)
+            x = self.attn(x)
+            x = self.Space_Adapter(x)
+
+            if self.args.thd:
+                xd = rearrange(xd, 'b (hh ww) c -> b  hh ww c', hh= hh )
+                x = x + xd
+
+            # Reverse window partition
+            if self.window_size > 0:
+                x = window_unpartition(x, self.window_size, pad_hw, (H, W))
 
         x = shortcut + x
         xn = self.norm2(x)

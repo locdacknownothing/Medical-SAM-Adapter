@@ -10,9 +10,10 @@ from typing import Optional, Tuple, Type
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.checkpoint as checkpoint
 from einops import rearrange
 
-from ...common import LayerNorm2d, ConvNeXt, ConvNeXtV2, FPN, CrossAttentionFusion
+from ...common import LayerNorm2d, ConvNeXt, ConvNeXtV2, FPN, CrossAttentionFusion, MultiLayerViTFusion, HighResVascularStem
 from ...ImageEncoder import AdapterBlock, Block, LoraBlock
 
 
@@ -60,6 +61,7 @@ class ImageEncoderViT(nn.Module):
         super().__init__()
         self.img_size = img_size
         self.args = args
+        self.global_attn_indexes = global_attn_indexes if len(global_attn_indexes) > 0 else tuple(range(depth - 1, -1, -max(depth // 4, 1))[::-1])
 
         self.patch_embed = PatchEmbed(
             kernel_size=(patch_size, patch_size),
@@ -117,6 +119,17 @@ class ImageEncoderViT(nn.Module):
             LayerNorm2d(out_chans),
         )
 
+        if getattr(args, 'multilayer_vit', False):
+            self.mlfa = MultiLayerViTFusion(
+                embed_dim=embed_dim,
+                out_chans=out_chans,
+                num_layers=len(self.global_attn_indexes),
+            )
+
+        self._last_stem_feats = None
+        if getattr(args, 'hq_decoder', False):
+            self.vascular_stem = HighResVascularStem(in_chans=in_chans)
+
         # CNN branch
         # convnext_dims = getattr(args, 'convnext_dims', [96, 192, 384, 768])
         # convnext_ver = getattr(args, 'convnext_ver', None)
@@ -139,11 +152,19 @@ class ImageEncoderViT(nn.Module):
         #     d_model=out_chans, n_heads=8,
         # )
 
+    def get_stem_feats(self):
+        return getattr(self, '_last_stem_feats', None)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # # CNN branch
         # cnn_features = self.convnext.forward_features(x)
         # conv_features = self.FPN(cnn_features)
         # # lower_feature = cnn_features[0]  # stage-0 feature for future decoder use
+
+        if getattr(self.args, 'hq_decoder', False) and hasattr(self, 'vascular_stem'):
+            self._last_stem_feats = self.vascular_stem(x)
+        else:
+            self._last_stem_feats = None
 
         # ViT branch
         x = self.patch_embed(x)
@@ -157,10 +178,20 @@ class ImageEncoderViT(nn.Module):
             ).permute(0, 2, 3, 1)
             x = x + new_abs_pos
 
-        for blk in self.blocks:
-            x = blk(x)
+        use_mlfa = getattr(self.args, 'multilayer_vit', False) and hasattr(self, 'mlfa')
+        global_feats = []
+
+        for i, blk in enumerate(self.blocks):
+            if self.training and x.requires_grad:
+                x = checkpoint.checkpoint(blk, x)
+            else:
+                x = blk(x)
+            if use_mlfa and i in self.global_attn_indexes:
+                global_feats.append(x)
             
         vit_features = self.neck(x.permute(0, 3, 1, 2))
+        if use_mlfa:
+            vit_features = self.mlfa(global_feats, vit_features)
         x = vit_features
         # Fusion
         # x = self.crossattnfusion(conv_features, vit_features)

@@ -92,6 +92,7 @@ def _build_sam(
             image_embedding_size=(image_embedding_size, image_embedding_size),
             input_image_size=(image_size, image_size),
             mask_in_chans=16,
+            use_hybrid_prompt=getattr(args, 'hybrid_prompt', False),
         ),
         mask_decoder=MaskDecoder(
             num_multimask_outputs=args.multimask_output,
@@ -104,6 +105,7 @@ def _build_sam(
             transformer_dim=prompt_embed_dim,
             iou_head_depth=3,
             iou_head_hidden_dim=256,
+            use_hq_decoder=getattr(args, 'hq_decoder', False),
         ),
         pixel_mean=[123.675, 116.28, 103.53],
         pixel_std=[58.395, 57.12, 57.375],

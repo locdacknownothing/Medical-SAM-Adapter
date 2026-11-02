@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from ...common import LayerNorm2d
+from ...common import HybridVascularPromptGenerator, LayerNorm2d
 
 
 class PromptEncoder(nn.Module):
@@ -21,6 +21,7 @@ class PromptEncoder(nn.Module):
         input_image_size: Tuple[int, int],
         mask_in_chans: int,
         activation: Type[nn.Module] = nn.GELU,
+        use_hybrid_prompt: bool = False,
     ) -> None:
         """
         Encodes prompts for input to SAM's mask decoder.
@@ -58,6 +59,10 @@ class PromptEncoder(nn.Module):
             nn.Conv2d(mask_in_chans, embed_dim, kernel_size=1),
         )
         self.no_mask_embed = nn.Embedding(1, embed_dim)
+
+        self.use_hybrid_prompt = use_hybrid_prompt
+        if self.use_hybrid_prompt:
+            self.hybrid_prompt_gen = HybridVascularPromptGenerator(embed_dim=embed_dim)
 
     def get_dense_pe(self) -> torch.Tensor:
         """

@@ -58,6 +58,30 @@ global_step_best = 0
 epoch_loss_values = []
 metric_values = []
 
+TRAINABLE_ENCODER_KEYS = ("Adapter", "mlfa", "vascular_stem")
+
+def configure_trainable_params(args, net: nn.Module):
+    if args.mod == 'sam_adpt':
+        trainable_keys = ["Adapter"]
+        if getattr(args, 'multilayer_vit', False):
+            trainable_keys.extend(["mlfa", "neck"])
+        if getattr(args, 'hq_decoder', False):
+            trainable_keys.append("vascular_stem")
+        for n, value in net.image_encoder.named_parameters():
+            if any(k in n for k in trainable_keys):
+                value.requires_grad = True
+            else:
+                value.requires_grad = False
+        if getattr(args, 'hybrid_prompt', False) and hasattr(net, 'prompt_encoder') and hasattr(net.prompt_encoder, 'hybrid_prompt_gen'):
+            for p in net.prompt_encoder.hybrid_prompt_gen.parameters():
+                p.requires_grad = True
+    elif args.mod == 'sam_lora' or args.mod == 'sam_adalora':
+        from models.common import loralib as lora
+        lora.mark_only_lora_as_trainable(net.image_encoder)
+    else:
+        for n, value in net.image_encoder.named_parameters():
+            value.requires_grad = True
+
 def get_loss(loss_func):
     if loss_func == 'dice_ce':
         lossfunc = DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
@@ -80,6 +104,15 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
     net.train()
     optimizer.zero_grad()
 
+    configure_trainable_params(args, net)
+    if args.mod == 'sam_adalora':
+        from models.common import loralib as lora
+        rankallocator = lora.RankAllocator(
+            net.image_encoder, lora_r=4, target_rank=8,
+            init_warmup=500, final_warmup=1500, mask_interval=10, 
+            total_step=3000, beta1=0.85, beta2=0.85, 
+        )
+
     epoch_loss = 0
     GPUdevice = torch.device('cuda:' + str(args.gpu_device))
 
@@ -88,7 +121,8 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
     else:
         lossfunc = get_loss(args.loss_func)
 
-    with tqdm(total=len(train_loader), desc=f'Epoch {epoch}', unit='img') as pbar:
+    max_batches = min(len(train_loader), int(os.environ.get('SMOKE_MAX_BATCHES', len(train_loader))))
+    with tqdm(total=max_batches, desc=f'Epoch {epoch}', unit='img') as pbar:
         for pack in train_loader:
             # torch.cuda.empty_cache()
             imgs = pack['image'].to(dtype = torch.float32, device = GPUdevice)
@@ -137,26 +171,6 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
             # imgs = imgs.to(dtype = mask_type,device = GPUdevice)
 
             '''Train'''
-            if args.mod == 'sam_adpt':
-                for n, value in net.image_encoder.named_parameters(): 
-                    if "Adapter" not in n:
-                        value.requires_grad = False
-                    else:
-                        value.requires_grad = True
-            elif args.mod == 'sam_lora' or args.mod == 'sam_adalora':
-                from models.common import loralib as lora
-                lora.mark_only_lora_as_trainable(net.image_encoder)
-                if args.mod == 'sam_adalora':
-                    # Initialize the RankAllocator 
-                    rankallocator = lora.RankAllocator(
-                        net.image_encoder, lora_r=4, target_rank=8,
-                        init_warmup=500, final_warmup=1500, mask_interval=10, 
-                        total_step=3000, beta1=0.85, beta2=0.85, 
-                    )
-            else:
-                for n, value in net.image_encoder.named_parameters(): 
-                    value.requires_grad = True
-                    
             with torch.cuda.amp.autocast():
                 origin_imgs = imgs.clone()        
                 imgs = net.preprocess(imgs)        
@@ -174,6 +188,9 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                             coords=coords_torch,
                             labels=labels_torch,
                         )
+
+                if getattr(args, 'hybrid_prompt', False) and hasattr(net, 'prompt_encoder') and hasattr(net.prompt_encoder, 'hybrid_prompt_gen'):
+                    se, de = net.prompt_encoder.hybrid_prompt_gen(imge, se, de)
                         
                 if args.net == 'sam':
                     pred, _ = net.mask_decoder(
@@ -182,6 +199,7 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                         sparse_prompt_embeddings=se,
                         dense_prompt_embeddings=de, 
                         multimask_output=(args.multimask_output > 1),
+                        stem_feats=getattr(net.image_encoder, '_last_stem_feats', None),
                     )
                 elif args.net == 'mobile_sam':
                     pred, _ = net.mask_decoder(
@@ -206,7 +224,8 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                     )
                     
                 # Resize to the ordered output size
-                pred = F.interpolate(pred,size=(args.out_size,args.out_size), mode="bilinear", align_corners=False)
+                if pred.shape[-2:] != (args.out_size, args.out_size):
+                    pred = F.interpolate(pred, size=(args.out_size, args.out_size), mode="bilinear", align_corners=False)
 
                 loss = lossfunc(pred, masks)
 
@@ -228,19 +247,22 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                 scaler.step(optimizer)
                 scaler.update()
             
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
 
             '''vis images'''
             if vis:
-                if ind % vis == 0:
+                vis_freq = 50 if vis == 1 else vis
+                if ind % vis_freq == 0:
                     namecat = 'Train'
                     for na in name:
                         namecat = namecat + na.split('/')[-1].split('.')[0] + '+'
                     vis_image(origin_imgs/255,pred,masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
 
             pbar.update()
+            if ind >= max_batches:
+                break
 
-    return epoch_loss / len(train_loader)
+    return epoch_loss / max(ind, 1)
 
 def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
      # eval mode
@@ -334,18 +356,21 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                 with torch.no_grad():
                     origin_imgs = imgs.clone()
 
-                    def _forward_pass(input_imgs):
+                    def _forward_pass(input_imgs, input_pt=pt):
                         """Run a single forward pass through the model."""
                         proc = net.preprocess(input_imgs)
                         img_emb = net.image_encoder(proc)
                         if args.net == 'sam' or args.net == 'mobile_sam':
                             sp, dp = net.prompt_encoder(
-                                points=pt,
+                                points=input_pt,
                                 boxes=None,
                                 masks=None,
                             )
+                            if getattr(args, 'hybrid_prompt', False) and hasattr(net, 'prompt_encoder') and hasattr(net.prompt_encoder, 'hybrid_prompt_gen'):
+                                sp, dp = net.prompt_encoder.hybrid_prompt_gen(img_emb, sp, dp)
                         elif args.net == "efficient_sam":
-                            coords_torch_t, labels_torch_t = transform_prompt(coords_torch, labels_torch, h, w)
+                            cur_coords, cur_labels = input_pt
+                            coords_torch_t, labels_torch_t = transform_prompt(cur_coords, cur_labels, h, w)
                             sp = net.prompt_encoder(
                                 coords=coords_torch_t,
                                 labels=labels_torch_t,
@@ -359,6 +384,7 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                                 sparse_prompt_embeddings=sp,
                                 dense_prompt_embeddings=dp,
                                 multimask_output=(args.multimask_output > 1),
+                                stem_feats=getattr(net.image_encoder, '_last_stem_feats', None),
                             )
                         elif args.net == 'mobile_sam':
                             out, _ = net.mask_decoder(
@@ -376,23 +402,29 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                                 sparse_prompt_embeddings=sp,
                                 multimask_output=False,
                             )
-                        return F.interpolate(out, size=(args.out_size, args.out_size), mode="bilinear", align_corners=False)
+                        if out.shape[-2:] != (args.out_size, args.out_size):
+                            out = F.interpolate(out, size=(args.out_size, args.out_size), mode="bilinear", align_corners=False)
+                        return out
 
                     # Original prediction
-                    pred = _forward_pass(imgs)
+                    pred = _forward_pass(imgs, pt)
 
                     # Test-Time Augmentation (TTA)
                     if getattr(args, 'tta', False):
-                        # Horizontal flip
-                        pred_hflip = _forward_pass(torch.flip(imgs, [3]))
+                        # Horizontal flip (flip width dim 3 -> x coordinate)
+                        coords_hflip = coords_torch.clone()
+                        coords_hflip[..., 0] = (imgs.shape[3] - 1) - coords_hflip[..., 0]
+                        pred_hflip = _forward_pass(torch.flip(imgs, [3]), (coords_hflip, labels_torch))
                         pred_hflip = torch.flip(pred_hflip, [3])
-                        # Vertical flip
-                        pred_vflip = _forward_pass(torch.flip(imgs, [2]))
+                        # Vertical flip (flip height dim 2 -> y coordinate)
+                        coords_vflip = coords_torch.clone()
+                        coords_vflip[..., 1] = (imgs.shape[2] - 1) - coords_vflip[..., 1]
+                        pred_vflip = _forward_pass(torch.flip(imgs, [2]), (coords_vflip, labels_torch))
                         pred_vflip = torch.flip(pred_vflip, [2])
                         # Average logits
                         pred = (pred + pred_hflip + pred_vflip) / 3.0
 
-                    tot += lossfunc(pred, masks) * cur_bsz
+                    tot += float(lossfunc(pred, masks).item()) * cur_bsz
 
 
                     # Cache predictions for two-pass threshold optimization
@@ -444,6 +476,7 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
     if args.evl_chunk:
         n_val = n_val * (imgsw.size(-1) // evl_ch)
 
+    torch.cuda.empty_cache()
     return tot/dataset_size, tuple([a / dataset_size for a in mix_res])
 
 def transform_prompt(coord,label,h,w):

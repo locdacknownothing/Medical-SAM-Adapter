@@ -52,7 +52,10 @@ def parse_args():
     default='../data',
     help='The path of segmentation data')
     parser.add_argument('-loss_func', type=str, default='dice_ce', choices=['bce', 'dice_ce', 'dice_focal', 'soft_dice_cldice'], help='loss function to use for 2D')
-    parser.add_argument('-adapter_type', type=str, default='linear', choices=['linear', 'conv'], help='Adapter type: linear (original) or conv (convolutional bottleneck)')
+    parser.add_argument('-adapter_type', type=str, default='linear', choices=['linear', 'conv', 'tubular'], help='Adapter type: linear (original), conv (convolutional bottleneck), or tubular (multi-scale tubular strip-conv)')
+    parser.add_argument('-multilayer_vit', action='store_true', default=False, help='Enable Pillar 2: Multi-Layer ViT Global Block Aggregation and trainable neck')
+    parser.add_argument('-hq_decoder', action='store_true', default=False, help='Enable Pillar 3: Lightweight High-Res Vascular Stem and Progressive Full-Res HQ-MaskDecoder')
+    parser.add_argument('-hybrid_prompt', action='store_true', default=False, help='Enable Pillar 4: Hybrid Learnable Vascular Prompt Generator')
     parser.add_argument('-convnext_ver', type=int, default=None, choices=[1, 2], help='ConvNeXt version: 1 or 2')
     parser.add_argument('-patience', type=int, default=30, help='Early stopping patience')
     parser.add_argument('-point_num', type=int, default=5, help='Number of point prompts per image')

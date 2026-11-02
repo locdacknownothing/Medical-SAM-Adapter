@@ -8,9 +8,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from typing import List, Tuple, Type
+from typing import List, Optional, Tuple, Type
 
-from ...common import LayerNorm2d
+from ...common import LayerNorm2d, ProgressiveHQRefiner
 
 
 class MaskDecoder(nn.Module):
@@ -23,6 +23,7 @@ class MaskDecoder(nn.Module):
         activation: Type[nn.Module] = nn.GELU,
         iou_head_depth: int = 3,
         iou_head_hidden_dim: int = 256,
+        use_hq_decoder: bool = False,
     ) -> None:
         """
         Predicts masks given an image and prompt embeddings, using a
@@ -67,6 +68,14 @@ class MaskDecoder(nn.Module):
             transformer_dim, iou_head_hidden_dim, self.num_mask_tokens, iou_head_depth
         )
 
+        self.use_hq_decoder = use_hq_decoder
+        if self.use_hq_decoder:
+            self.hq_token = nn.Embedding(1, transformer_dim)
+            self.hq_refiner = ProgressiveHQRefiner(
+                transformer_dim=transformer_dim,
+                num_masks=self.num_multimask_outputs,
+            )
+
     def forward(
         self,
         image_embeddings: torch.Tensor,
@@ -74,6 +83,7 @@ class MaskDecoder(nn.Module):
         sparse_prompt_embeddings: torch.Tensor,
         dense_prompt_embeddings: torch.Tensor,
         multimask_output: bool,
+        stem_feats: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Predict masks given image and prompt embeddings.
@@ -85,6 +95,8 @@ class MaskDecoder(nn.Module):
           dense_prompt_embeddings (torch.Tensor): the embeddings of the mask inputs
           multimask_output (bool): Whether to return multiple masks or a single
             mask.
+          stem_feats (Optional[Tuple[torch.Tensor, ...]]): Multi-scale stem features
+            (s0, s1, s2) from HighResVascularStem when use_hq_decoder is enabled.
 
         Returns:
           torch.Tensor: batched predicted masks
@@ -101,6 +113,15 @@ class MaskDecoder(nn.Module):
         mask_slice = slice(0, self.num_multimask_outputs)
         masks = masks[:, mask_slice, :, :]
         iou_pred = iou_pred[:, mask_slice]
+
+        if self.use_hq_decoder and stem_feats is not None:
+            token_for_hq = self._last_mask_tokens_out[:, 0, :] + self.hq_token.weight
+            masks = self.hq_refiner(
+                coarse_masks=masks,
+                upscaled_embedding=self._last_upscaled_embedding,
+                hq_token_out=token_for_hq,
+                stem_feats=stem_feats,
+            )
 
         # Prepare output
         return masks, iou_pred
@@ -135,6 +156,8 @@ class MaskDecoder(nn.Module):
         # Upscale mask embeddings and predict masks using the mask tokens
         src = src.transpose(1, 2).view(b, c, h, w)
         upscaled_embedding = self.output_upscaling(src)
+        self._last_mask_tokens_out = mask_tokens_out
+        self._last_upscaled_embedding = upscaled_embedding
         hyper_in_list: List[torch.Tensor] = []
         for i in range(self.num_mask_tokens):
             hyper_in_list.append(self.output_hypernetworks_mlps[i](mask_tokens_out[:, i, :]))
