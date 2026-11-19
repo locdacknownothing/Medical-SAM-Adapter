@@ -1,0 +1,1859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cross-Dataset Fundus Segmentation Failure Analysis — Medical-SAM-Adapter (ViT-H + Conv + TTA)</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --surface: #121722;
+      --surface-2: #181f2e;
+      --surface-3: #1e2738;
+      --border: #2a3449;
+      --text: #e6edf7;
+      --text-muted: #94a3b8;
+      --chase: #38bdf8;
+      --drive: #34d399;
+      --stare: #f472b6;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 28px 24px 72px;
+    }
+
+    /* Header */
+    .hero {
+      background: linear-gradient(135deg, #131b2b 0%, #0f141e 100%);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 26px 30px;
+      margin-bottom: 22px;
+    }
+    .hero-kicker {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #60a5fa;
+      margin-bottom: 6px;
+    }
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .hero-sub {
+      margin: 0 0 16px;
+      color: var(--text-muted);
+      max-width: 980px;
+    }
+    .quick-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .nav-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 13px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      transition: 0.15s ease;
+    }
+    .nav-pill:hover {
+      background: var(--surface-3);
+      border-color: #4b5c7e;
+    }
+    .nav-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* Dataset Overview Cards */
+    .ds-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .ds-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+    .ds-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .ds-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .ds-metrics-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      background: var(--surface-2);
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    .ds-metrics-row span {
+      display: block;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .ds-metrics-row strong {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text);
+    }
+    .ds-log-path {
+      font-size: 11px;
+      color: var(--text-muted);
+      word-break: break-all;
+    }
+
+    /* Tags & Pills */
+    .mono { font-family: var(--font-mono); }
+    .ds-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .ds-tag-chase { background: rgba(56, 189, 248, 0.16); color: var(--chase); border: 1px solid rgba(56, 189, 248, 0.35); }
+    .ds-tag-drive { background: rgba(52, 211, 153, 0.16); color: var(--drive); border: 1px solid rgba(52, 211, 153, 0.35); }
+    .ds-tag-stare { background: rgba(244, 114, 182, 0.16); color: var(--stare); border: 1px solid rgba(244, 114, 182, 0.35); }
+
+    /* Cross-Dataset Matrix */
+    .matrix-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
+      margin-bottom: 28px;
+    }
+    .matrix-card h3 {
+      margin: 0 0 6px;
+      font-size: 17px;
+    }
+    .matrix-note {
+      margin: 0 0 14px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .matrix-table th, .matrix-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 12px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .matrix-table th {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      background: var(--surface-2);
+    }
+    .cat-link {
+      display: block;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .cat-link:hover strong { text-decoration: underline; }
+    .cat-count-sub {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .pill-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .matrix-pill {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      padding: 3px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: 0.12s ease;
+    }
+    .matrix-pill:hover {
+      transform: translateY(-1px);
+      background: var(--surface-3);
+    }
+    .matrix-pill-rep {
+      border-color: #fbbf24;
+      background: rgba(251, 191, 36, 0.14);
+      font-weight: 700;
+    }
+
+    /* Failure Sections */
+    .failure-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top: 4px solid var(--cat-accent);
+      border-radius: 14px;
+      padding: 24px 26px;
+      margin-bottom: 30px;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .category-kicker {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--cat-accent);
+      margin-bottom: 4px;
+    }
+    .section-title-block h2 {
+      margin: 0;
+      font-size: 22px;
+    }
+    .cat-kpi-strip {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .mini-kpi {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      min-width: 92px;
+    }
+    .mini-kpi span {
+      display: block;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .mini-kpi strong {
+      font-family: var(--font-mono);
+      font-size: 15px;
+    }
+
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .analysis-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .analysis-card h4 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--cat-accent);
+    }
+    .analysis-card p {
+      margin: 0 0 8px;
+      color: var(--text);
+      font-size: 13.5px;
+    }
+    .analysis-card p:last-child { margin-bottom: 0; }
+    .sig-line, .mit-line { color: var(--text-muted) !important; font-size: 13px !important; }
+    .sig-line strong, .mit-line strong { color: var(--text); }
+
+    /* Sample Switcher Badges */
+    .switcher-panel {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 18px;
+    }
+    .switcher-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .reset-btn {
+      background: var(--surface-3);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 11px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .reset-btn:hover { border-color: var(--cat-accent); }
+    .ds-badge-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .ds-badge-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .ds-group-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .ds-label-chase { color: var(--chase); }
+    .ds-label-drive { color: var(--drive); }
+    .ds-label-stare { color: var(--stare); }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .sample-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: 0.12s ease;
+    }
+    .sample-badge:hover {
+      border-color: var(--cat-accent);
+      background: var(--surface-3);
+    }
+    .sample-badge.active {
+      background: var(--cat-accent-soft);
+      border-color: var(--cat-accent);
+      color: #ffffff;
+      font-weight: 700;
+      box-shadow: 0 0 0 1px var(--cat-accent);
+    }
+    .rep-star {
+      font-family: var(--font-sans);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(251, 191, 36, 0.2);
+      color: #fcd34d;
+    }
+
+    /* Triple Image Viewer */
+    .viewer-card {
+      background: #0d1119;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .viewer-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .viewer-title-info {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+    .viewer-sample-name {
+      font-family: var(--font-mono);
+      font-size: 16px;
+    }
+    .viewer-source {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .rep-inline {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(251, 191, 36, 0.16);
+      color: #fcd34d;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+    }
+    .view-mode-toggle {
+      display: inline-flex;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+    }
+    .mode-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .mode-btn.active {
+      background: var(--cat-accent-soft);
+      color: #ffffff;
+      border: 1px solid var(--cat-accent);
+    }
+
+    .error-legend {
+      display: none;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 12px;
+      margin-bottom: 12px;
+    }
+    .viewer-card[data-mode="errmap"] .error-legend,
+    .viewer-card[data-mode="quad"] .error-legend {
+      display: flex;
+    }
+    .swatch {
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      border-radius: 2px;
+      vertical-align: -1px;
+      margin-right: 4px;
+    }
+    .sw-tp { background: #f5f7fa; }
+    .sw-fn { background: #ff4b5c; }
+    .sw-fp { background: #00e5ff; }
+    .legend-tip { margin-left: auto; font-style: italic; font-size: 11.5px; }
+
+    .triple-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .viewer-card[data-mode="triple"] .panel-err-slot { display: none; }
+    .viewer-card[data-mode="errmap"] .panel-pred-slot { display: none; }
+    .viewer-card[data-mode="errmap"] .panel-err-slot { display: block; }
+    .viewer-card[data-mode="quad"] .triple-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .viewer-card[data-mode="quad"] .panel-pred-slot,
+    .viewer-card[data-mode="quad"] .panel-err-slot { display: block; }
+
+    .panel-fig {
+      margin: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      overflow: hidden;
+    }
+    .panel-fig figcaption {
+      padding: 7px 11px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    .img-frame {
+      background: #000000;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-in;
+      overflow: hidden;
+    }
+    .img-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .viewer-caption-bar {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .caption-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+    .caption-metrics strong {
+      font-family: var(--font-mono);
+      color: var(--text);
+    }
+    .caption-note {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    /* Sample Metric Table */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .sample-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    .sample-table th {
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      padding: 10px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .sample-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .sample-row {
+      cursor: pointer;
+      transition: background 0.1s ease;
+    }
+    .sample-row:hover { background: var(--surface-2); }
+    .sample-row.active-row {
+      background: var(--cat-accent-soft);
+    }
+    .sample-row:last-child td { border-bottom: none; }
+    .num-cell { text-align: right !important; white-space: nowrap; }
+    .sample-name-cell { font-weight: 700; white-space: nowrap; }
+    .file-cell { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+    .col-pill {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--surface-3);
+      font-size: 10.5px;
+      color: var(--text-muted);
+    }
+    .note-cell { min-width: 260px; color: var(--text); }
+
+    /* Zoom Modal */
+    .zoom-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 13, 0.9);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      padding: 24px;
+    }
+    .zoom-modal.open { display: flex; }
+    .zoom-modal img {
+      max-width: 92vw;
+      max-height: 84vh;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #000;
+    }
+    .zoom-caption {
+      margin-top: 10px;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .zoom-close {
+      position: fixed;
+      top: 16px;
+      right: 22px;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    @media (max-width: 1024px) {
+      .ds-grid, .analysis-grid { grid-template-columns: 1fr; }
+      .triple-grid, .viewer-card[data-mode="quad"] .triple-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div class="hero-kicker">Medical-SAM-Adapter · Cross-Dataset Error Analysis</div>
+      <h1>Retinal Vessel Segmentation Failure Report (CHASE · DRIVE · STARE)</h1>
+      <p class="hero-sub">
+        Mutually exclusive primary-failure taxonomy across all <strong>32 validation samples</strong> from
+        <code>logs/val_msa_vit_h_*_dice_ce_conv_improved_tta_*/Samples</code> (ViT-H SAM encoder + improved convolutional adapter + TTA + Dice-CE).
+        Samples sharing the same dominant failure mode across different datasets are grouped together, with an interactive triple-image comparison
+        (Original Fundus | Predicted Map | Ground-Truth Mask) and color-coded error diff toggle for every sample.
+      </p>
+      <div class="quick-nav">
+        <a class="nav-pill" href="#cross-dataset-matrix"><span class="nav-dot" style="background:#60a5fa;"></span>Cross-Dataset Matrix (32/32)</a>
+        <a class="nav-pill" href="#cat1-capillary-omission"><span class="nav-dot" style="background:#ff4b5c;"></span>1. Capillary Omission (10)</a>
+        <a class="nav-pill" href="#cat2-vessel-dilation"><span class="nav-dot" style="background:#00e5ff;"></span>2. Vessel Dilation &amp; Merging (9)</a>
+        <a class="nav-pill" href="#cat3-topological-fragmentation"><span class="nav-dot" style="background:#fbbf24;"></span>3. Fragmentation (6)</a>
+        <a class="nav-pill" href="#cat4-illumination-lesion"><span class="nav-dot" style="background:#c084fc;"></span>4. Illumination &amp; Lesions (7)</a>
+      </div>
+    </header>
+
+    <section class="ds-grid" aria-label="Dataset Validation Summary">
+      
+        <div class="ds-card ds-card-chase">
+          <div class="ds-card-head">
+            <span class="ds-tag ds-tag-chase">CHASE</span>
+            <span class="ds-meta">Epoch 53 · 8 Test Samples · 1008×1008 px</span>
+          </div>
+          <div class="ds-metrics-row">
+            <div><span>Dice / F1</span><strong>0.8180</strong></div>
+            <div><span>IoU</span><strong>0.6928</strong></div>
+            <div><span>Sensitivity</span><strong>0.8433</strong></div>
+            <div><span>Specificity</span><strong>0.9854</strong></div>
+            <div><span>AUC</span><strong>0.9909</strong></div>
+          </div>
+          <div class="ds-log-path mono">logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples</div>
+        </div>
+        
+        <div class="ds-card ds-card-drive">
+          <div class="ds-card-head">
+            <span class="ds-tag ds-tag-drive">DRIVE</span>
+            <span class="ds-meta">Epoch 80 · 20 Test Samples · 592×592 px</span>
+          </div>
+          <div class="ds-metrics-row">
+            <div><span>Dice / F1</span><strong>0.8018</strong></div>
+            <div><span>IoU</span><strong>0.6692</strong></div>
+            <div><span>Sensitivity</span><strong>0.8203</strong></div>
+            <div><span>Specificity</span><strong>0.9785</strong></div>
+            <div><span>AUC</span><strong>0.9819</strong></div>
+          </div>
+          <div class="ds-log-path mono">logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples</div>
+        </div>
+        
+        <div class="ds-card ds-card-stare">
+          <div class="ds-card-head">
+            <span class="ds-tag ds-tag-stare">STARE</span>
+            <span class="ds-meta">Epoch 39 · 4 Test Samples · 704×704 px</span>
+          </div>
+          <div class="ds-metrics-row">
+            <div><span>Dice / F1</span><strong>0.8107</strong></div>
+            <div><span>IoU</span><strong>0.6825</strong></div>
+            <div><span>Sensitivity</span><strong>0.8245</strong></div>
+            <div><span>Specificity</span><strong>0.9865</strong></div>
+            <div><span>AUC</span><strong>0.9905</strong></div>
+          </div>
+          <div class="ds-log-path mono">logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples</div>
+        </div>
+        
+    </section>
+
+    <section class="matrix-card" id="cross-dataset-matrix">
+      <h3>Cross-Dataset Failure Grouping Matrix (All 32 Samples)</h3>
+      <p class="matrix-note">
+        Each sample is assigned to its single most dominant failure category. Click any sample badge below to jump directly to its category and load its triple-image comparison.
+        Per-sample pixel metrics (Dice, FNR, FP/GT) are measured directly from the cropped predicted and ground-truth visualization panels (filtering colored prompt-point markers in GT).
+      </p>
+      <div class="table-wrap">
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th style="min-width: 260px;">Failure Category</th>
+              <th>CHASE (8 samples)</th>
+              <th>DRIVE (20 samples)</th>
+              <th>STARE (4 samples)</th>
+              <th class="num-cell">Avg Dice</th>
+              <th class="num-cell">Avg FNR</th>
+              <th class="num-cell">Avg FP/GT</th>
+            </tr>
+          </thead>
+          <tbody>
+            
+        <tr>
+          <td>
+            <a class="cat-link" href="#cat1-capillary-omission" style="border-left: 4px solid #ff4b5c; padding-left: 10px;">
+              <strong>#1 Fine Capillary &amp; Terminal Branch Omission</strong>
+              <span class="cat-count-sub">10 / 32 samples (2 CHASE · 7 DRIVE · 1 STARE)</span>
+            </a>
+          </td>
+          <td><div class="pill-wrap"><button class="matrix-pill ds-chase" onclick="jumpToSample('cat1-capillary-omission', 'CHASE::Image_12L')" title="Inspect CHASE Image_12L in Failure Mode 1">Image_12L</button><button class="matrix-pill ds-chase" onclick="jumpToSample('cat1-capillary-omission', 'CHASE::Image_14L')" title="Inspect CHASE Image_14L in Failure Mode 1">Image_14L</button></div></td><td><div class="pill-wrap"><button class="matrix-pill ds-drive" onclick="jumpToSample('cat1-capillary-omission', 'DRIVE::02')" title="Inspect DRIVE 02 in Failure Mode 1">02</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat1-capillary-omission', 'DRIVE::04')" title="Inspect DRIVE 04 in Failure Mode 1">04</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat1-capillary-omission', 'DRIVE::05')" title="Inspect DRIVE 05 in Failure Mode 1">05</button><button class="matrix-pill ds-drive matrix-pill-rep" onclick="jumpToSample('cat1-capillary-omission', 'DRIVE::06')" title="Inspect DRIVE 06 in Failure Mode 1">★ 06</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat1-capillary-omission', 'DRIVE::07')" title="Inspect DRIVE 07 in Failure Mode 1">07</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat1-capillary-omission', 'DRIVE::09')" title="Inspect DRIVE 09 in Failure Mode 1">09</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat1-capillary-omission', 'DRIVE::13')" title="Inspect DRIVE 13 in Failure Mode 1">13</button></div></td><td><div class="pill-wrap"><button class="matrix-pill ds-stare" onclick="jumpToSample('cat1-capillary-omission', 'STARE::im0255')" title="Inspect STARE im0255 in Failure Mode 1">im0255</button></div></td>
+          <td class="num-cell">0.810</td>
+          <td class="num-cell">21.3%</td>
+          <td class="num-cell">15.5%</td>
+        </tr>
+        
+        <tr>
+          <td>
+            <a class="cat-link" href="#cat2-vessel-dilation" style="border-left: 4px solid #00e5ff; padding-left: 10px;">
+              <strong>#2 Vessel Dilation &amp; Parallel Branch Merging</strong>
+              <span class="cat-count-sub">9 / 32 samples (3 CHASE · 5 DRIVE · 1 STARE)</span>
+            </a>
+          </td>
+          <td><div class="pill-wrap"><button class="matrix-pill ds-chase" onclick="jumpToSample('cat2-vessel-dilation', 'CHASE::Image_11L')" title="Inspect CHASE Image_11L in Failure Mode 2">Image_11L</button><button class="matrix-pill ds-chase" onclick="jumpToSample('cat2-vessel-dilation', 'CHASE::Image_11R')" title="Inspect CHASE Image_11R in Failure Mode 2">Image_11R</button><button class="matrix-pill ds-chase" onclick="jumpToSample('cat2-vessel-dilation', 'CHASE::Image_12R')" title="Inspect CHASE Image_12R in Failure Mode 2">Image_12R</button></div></td><td><div class="pill-wrap"><button class="matrix-pill ds-drive" onclick="jumpToSample('cat2-vessel-dilation', 'DRIVE::01')" title="Inspect DRIVE 01 in Failure Mode 2">01</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat2-vessel-dilation', 'DRIVE::15')" title="Inspect DRIVE 15 in Failure Mode 2">15</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat2-vessel-dilation', 'DRIVE::18')" title="Inspect DRIVE 18 in Failure Mode 2">18</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat2-vessel-dilation', 'DRIVE::19')" title="Inspect DRIVE 19 in Failure Mode 2">19</button><button class="matrix-pill ds-drive matrix-pill-rep" onclick="jumpToSample('cat2-vessel-dilation', 'DRIVE::20')" title="Inspect DRIVE 20 in Failure Mode 2">★ 20</button></div></td><td><div class="pill-wrap"><button class="matrix-pill ds-stare" onclick="jumpToSample('cat2-vessel-dilation', 'STARE::im0291')" title="Inspect STARE im0291 in Failure Mode 2">im0291</button></div></td>
+          <td class="num-cell">0.810</td>
+          <td class="num-cell">12.3%</td>
+          <td class="num-cell">28.8%</td>
+        </tr>
+        
+        <tr>
+          <td>
+            <a class="cat-link" href="#cat3-topological-fragmentation" style="border-left: 4px solid #fbbf24; padding-left: 10px;">
+              <strong>#3 Topological Fragmentation &amp; Discontinuity</strong>
+              <span class="cat-count-sub">6 / 32 samples (1 CHASE · 4 DRIVE · 1 STARE)</span>
+            </a>
+          </td>
+          <td><div class="pill-wrap"><button class="matrix-pill ds-chase" onclick="jumpToSample('cat3-topological-fragmentation', 'CHASE::Image_14R')" title="Inspect CHASE Image_14R in Failure Mode 3">Image_14R</button></div></td><td><div class="pill-wrap"><button class="matrix-pill ds-drive" onclick="jumpToSample('cat3-topological-fragmentation', 'DRIVE::10')" title="Inspect DRIVE 10 in Failure Mode 3">10</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat3-topological-fragmentation', 'DRIVE::11')" title="Inspect DRIVE 11 in Failure Mode 3">11</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat3-topological-fragmentation', 'DRIVE::12')" title="Inspect DRIVE 12 in Failure Mode 3">12</button><button class="matrix-pill ds-drive matrix-pill-rep" onclick="jumpToSample('cat3-topological-fragmentation', 'DRIVE::16')" title="Inspect DRIVE 16 in Failure Mode 3">★ 16</button></div></td><td><div class="pill-wrap"><button class="matrix-pill ds-stare" onclick="jumpToSample('cat3-topological-fragmentation', 'STARE::im0324')" title="Inspect STARE im0324 in Failure Mode 3">im0324</button></div></td>
+          <td class="num-cell">0.801</td>
+          <td class="num-cell">16.9%</td>
+          <td class="num-cell">24.4%</td>
+        </tr>
+        
+        <tr>
+          <td>
+            <a class="cat-link" href="#cat4-illumination-lesion" style="border-left: 4px solid #c084fc; padding-left: 10px;">
+              <strong>#4 Low-Contrast / Illumination &amp; Lesion Interference</strong>
+              <span class="cat-count-sub">7 / 32 samples (2 CHASE · 4 DRIVE · 1 STARE)</span>
+            </a>
+          </td>
+          <td><div class="pill-wrap"><button class="matrix-pill ds-chase" onclick="jumpToSample('cat4-illumination-lesion', 'CHASE::Image_13L')" title="Inspect CHASE Image_13L in Failure Mode 4">Image_13L</button><button class="matrix-pill ds-chase matrix-pill-rep" onclick="jumpToSample('cat4-illumination-lesion', 'CHASE::Image_13R')" title="Inspect CHASE Image_13R in Failure Mode 4">★ Image_13R</button></div></td><td><div class="pill-wrap"><button class="matrix-pill ds-drive" onclick="jumpToSample('cat4-illumination-lesion', 'DRIVE::03')" title="Inspect DRIVE 03 in Failure Mode 4">03</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat4-illumination-lesion', 'DRIVE::08')" title="Inspect DRIVE 08 in Failure Mode 4">08</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat4-illumination-lesion', 'DRIVE::14')" title="Inspect DRIVE 14 in Failure Mode 4">14</button><button class="matrix-pill ds-drive" onclick="jumpToSample('cat4-illumination-lesion', 'DRIVE::17')" title="Inspect DRIVE 17 in Failure Mode 4">17</button></div></td><td><div class="pill-wrap"><button class="matrix-pill ds-stare" onclick="jumpToSample('cat4-illumination-lesion', 'STARE::im0319')" title="Inspect STARE im0319 in Failure Mode 4">im0319</button></div></td>
+          <td class="num-cell">0.801</td>
+          <td class="num-cell">17.3%</td>
+          <td class="num-cell">23.9%</td>
+        </tr>
+        
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    
+        <section class="failure-section" id="cat1-capillary-omission" style="--cat-accent: #ff4b5c; --cat-accent-soft: rgba(255, 75, 92, 0.14);">
+          <div class="section-header">
+            <div class="section-title-block">
+              <div class="category-kicker">Failure Mode 1 · 10 Samples Across All 3 Datasets</div>
+              <h2>Fine Capillary &amp; Terminal Branch Omission</h2>
+            </div>
+            <div class="cat-kpi-strip">
+              <div class="mini-kpi"><span>Avg Dice</span><strong>0.810</strong></div>
+              <div class="mini-kpi"><span>Avg FNR</span><strong>21.3%</strong></div>
+              <div class="mini-kpi"><span>Avg FP/GT</span><strong>15.5%</strong></div>
+              <div class="mini-kpi"><span>Avg Thin-FN</span><strong>35.8%</strong></div>
+            </div>
+          </div>
+
+          <div class="analysis-grid">
+            <div class="analysis-card">
+              <h4>Visual & Morphological Pattern</h4>
+              <p>Severe recall drop-off on 1–2 px wide distal arterioles, macular tributaries, and fine tertiary capillary networks, while primary vascular arcades remain cleanly segmented with low false-positive rates.</p>
+              <p class="sig-line"><strong>Quantitative Signature:</strong> High False Negative Rate (FNR 17.2%–24.6%), elevated Thin-Vessel FN% (29.3%–38.6% on GT skeleton pixels with distance transform ≤ 1.5 px), and restrained FP/GT ratio (0.084–0.222).</p>
+            </div>
+            <div class="analysis-card">
+              <h4>Root Cause & Mitigation</h4>
+              <p><strong>Likely Cause:</strong> Global optimal thresholding calibrated for Dice maximizes precision on dominant trunks at the expense of faint low-contrast capillaries whose sub-pixel widths get attenuated by ViT patch embedding downsampling and convolutional adapter smoothing.</p>
+              <p class="mit-line"><strong>Actionable Fix:</strong> Add centerline/skeleton-weighted loss (clDice or thin-vessel focal Dice), supervise multi-scale high-resolution decoder skips, or apply hysteresis / dual-threshold post-processing seeded from high-confidence trunks.</p>
+            </div>
+          </div>
+
+          <div class="switcher-panel">
+            <div class="switcher-header">
+              <span><strong>Samples Exhibiting This Failure</strong> (click any sample badge or table row below to inspect its triple-image group):</span>
+              <button class="reset-btn" onclick="selectSample('cat1-capillary-omission', 'DRIVE::06')">
+                Reset to ★ Primary Representative (DRIVE: 06)
+              </button>
+            </div>
+            <div class="ds-badge-container">
+              <div class="ds-badge-group"><span class="ds-group-label ds-label-chase">CHASE (2)</span><div class="badge-row"><button class="sample-badge ds-chase" data-cat="cat1-capillary-omission" data-key="CHASE::Image_12L" onclick="selectSample('cat1-capillary-omission', 'CHASE::Image_12L')">Image_12L</button><button class="sample-badge ds-chase" data-cat="cat1-capillary-omission" data-key="CHASE::Image_14L" onclick="selectSample('cat1-capillary-omission', 'CHASE::Image_14L')">Image_14L</button></div></div><div class="ds-badge-group"><span class="ds-group-label ds-label-drive">DRIVE (7)</span><div class="badge-row"><button class="sample-badge ds-drive" data-cat="cat1-capillary-omission" data-key="DRIVE::02" onclick="selectSample('cat1-capillary-omission', 'DRIVE::02')">02</button><button class="sample-badge ds-drive" data-cat="cat1-capillary-omission" data-key="DRIVE::04" onclick="selectSample('cat1-capillary-omission', 'DRIVE::04')">04</button><button class="sample-badge ds-drive" data-cat="cat1-capillary-omission" data-key="DRIVE::05" onclick="selectSample('cat1-capillary-omission', 'DRIVE::05')">05</button><button class="sample-badge ds-drive active" data-cat="cat1-capillary-omission" data-key="DRIVE::06" onclick="selectSample('cat1-capillary-omission', 'DRIVE::06')">06<span class="rep-star" title="Primary Representative Sample">★ Rep</span></button><button class="sample-badge ds-drive" data-cat="cat1-capillary-omission" data-key="DRIVE::07" onclick="selectSample('cat1-capillary-omission', 'DRIVE::07')">07</button><button class="sample-badge ds-drive" data-cat="cat1-capillary-omission" data-key="DRIVE::09" onclick="selectSample('cat1-capillary-omission', 'DRIVE::09')">09</button><button class="sample-badge ds-drive" data-cat="cat1-capillary-omission" data-key="DRIVE::13" onclick="selectSample('cat1-capillary-omission', 'DRIVE::13')">13</button></div></div><div class="ds-badge-group"><span class="ds-group-label ds-label-stare">STARE (1)</span><div class="badge-row"><button class="sample-badge ds-stare" data-cat="cat1-capillary-omission" data-key="STARE::im0255" onclick="selectSample('cat1-capillary-omission', 'STARE::im0255')">im0255</button></div></div>
+            </div>
+          </div>
+
+          <div class="viewer-card" id="viewer-cat1-capillary-omission" data-mode="triple">
+            <div class="viewer-toolbar">
+              <div class="viewer-title-info">
+                <span class="ds-tag ds-tag-drive" id="v-ds-cat1-capillary-omission">DRIVE</span>
+                <strong class="viewer-sample-name" id="v-name-cat1-capillary-omission">06</strong>
+                <span class="rep-inline" id="v-rep-badge-cat1-capillary-omission">★ Primary Representative</span>
+                <span class="viewer-source" id="v-src-cat1-capillary-omission">Test06+09+epoch+80.jpg (Left Column, 592×592)</span>
+              </div>
+              <div class="view-mode-toggle" role="group" aria-label="Viewer Display Mode">
+                <button class="mode-btn active" data-mode="triple" onclick="setViewMode('cat1-capillary-omission', 'triple', this)">3-Panel (Orig | Pred | GT)</button>
+                <button class="mode-btn" data-mode="errmap" onclick="setViewMode('cat1-capillary-omission', 'errmap', this)">3-Panel w/ Error Map</button>
+                <button class="mode-btn" data-mode="quad" onclick="setViewMode('cat1-capillary-omission', 'quad', this)">4-Panel (+ Error Diff)</button>
+              </div>
+            </div>
+
+            <div class="error-legend" id="legend-cat1-capillary-omission">
+              <span><i class="swatch sw-tp"></i> True Positive (Correct Vessel)</span>
+              <span><i class="swatch sw-fn"></i> False Negative (Missed Vessel)</span>
+              <span><i class="swatch sw-fp"></i> False Positive (Over-Segmented)</span>
+              <span class="legend-tip">Click any image panel to zoom to full native resolution</span>
+            </div>
+
+            <div class="triple-grid" id="grid-cat1-capillary-omission">
+              <figure class="panel-fig">
+                <figcaption>1. Original Fundus Image</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-orig-cat1-capillary-omission" src="assets/DRIVE_06_orig.jpg" alt="Original Fundus Image" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig panel-pred-slot" id="slot-pred-cat1-capillary-omission">
+                <figcaption id="cap-pred-cat1-capillary-omission">2. Predicted Segmentation Map</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-pred-cat1-capillary-omission" src="assets/DRIVE_06_pred.jpg" alt="Predicted Segmentation Map" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig panel-err-slot" id="slot-err-cat1-capillary-omission">
+                <figcaption>Error Map (TP=White, FN=Red, FP=Cyan)</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-err-cat1-capillary-omission" src="assets/DRIVE_06_err.jpg" alt="Color-Coded Error Map" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig">
+                <figcaption>3. Ground-Truth Vessel Mask</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-gt-cat1-capillary-omission" src="assets/DRIVE_06_gt.jpg" alt="Ground-Truth Vessel Mask" loading="lazy" />
+                </div>
+              </figure>
+            </div>
+
+            <div class="viewer-caption-bar">
+              <div class="caption-metrics" id="v-metrics-cat1-capillary-omission">
+                <span>Dice: <strong>0.795</strong></span>
+                <span>IoU: <strong>0.660</strong></span>
+                <span>FNR (Missed): <strong>24.5%</strong></span>
+                <span>FP/GT Ratio: <strong>14.5%</strong></span>
+                <span>Thin-Vessel FN: <strong>38.6%</strong></span>
+                <span>Thickening FP: <strong>98%</strong></span>
+                <span>CCs (Pred/GT): <strong>179 / 673</strong></span>
+              </div>
+              <div class="caption-note" id="v-note-cat1-capillary-omission">Primary Representative: Highest FNR in DRIVE (24.5%) and worst ThinFN (38.6%); extensive fine capillary dropout across TL/BL/TR.</div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="sample-table">
+              <thead>
+                <tr>
+                  <th>Dataset</th>
+                  <th>Sample</th>
+                  <th>Source Composite (Col)</th>
+                  <th class="num-cell">Dice</th>
+                  <th class="num-cell">FNR</th>
+                  <th class="num-cell">FP/GT</th>
+                  <th class="num-cell">Thin FN%</th>
+                  <th class="num-cell">Thick FP%</th>
+                  <th class="num-cell">CCs (P/G)</th>
+                  <th>Sample Failure Observation</th>
+                </tr>
+              </thead>
+              <tbody>
+                
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="CHASE::Image_12L"
+                onclick="selectSample('cat1-capillary-omission', 'CHASE::Image_12L')">
+              <td><span class="ds-tag ds-tag-chase">CHASE</span></td>
+              <td class="mono sample-name-cell">Image_12L</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_12L+Image_14L+epoch+53.jpg">TestImage_12L+Image_14L+epoch+53.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.811</td>
+              <td class="num-cell mono">16.6%</td>
+              <td class="num-cell mono">22.2%</td>
+              <td class="num-cell mono">34.7%</td>
+              <td class="num-cell mono">79%</td>
+              <td class="num-cell mono">92 / 139</td>
+              <td class="note-cell">Misses distal thin branching capillaries in TL/BR quadrants (ThinFN 34.7%) while preserving primary disc arcades.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="CHASE::Image_14L"
+                onclick="selectSample('cat1-capillary-omission', 'CHASE::Image_14L')">
+              <td><span class="ds-tag ds-tag-chase">CHASE</span></td>
+              <td class="mono sample-name-cell">Image_14L</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_12L+Image_14L+epoch+53.jpg">TestImage_12L+Image_14L+epoch+53.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.832</td>
+              <td class="num-cell mono">17.8%</td>
+              <td class="num-cell mono">15.4%</td>
+              <td class="num-cell mono">36.8%</td>
+              <td class="num-cell mono">83%</td>
+              <td class="num-cell mono">147 / 34</td>
+              <td class="note-cell">Highest Dice in CHASE (0.832) with low FP/GT (0.154), but omits fine macular/BR terminal filaments (ThinFN 36.8%).</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="DRIVE::02"
+                onclick="selectSample('cat1-capillary-omission', 'DRIVE::02')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">02</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test02+16+epoch+80.jpg">Test02+16+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.832</td>
+              <td class="num-cell mono">17.2%</td>
+              <td class="num-cell mono">16.4%</td>
+              <td class="num-cell mono">29.3%</td>
+              <td class="num-cell mono">96%</td>
+              <td class="num-cell mono">149 / 395</td>
+              <td class="note-cell">Best Dice in DRIVE (0.832) yet 29.3% of thin capillary pixels drop out, notably in upper-left/lower-left distal branches.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="DRIVE::04"
+                onclick="selectSample('cat1-capillary-omission', 'DRIVE::04')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">04</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test05+04+epoch+80.jpg">Test05+04+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.817</td>
+              <td class="num-cell mono">20.4%</td>
+              <td class="num-cell mono">15.3%</td>
+              <td class="num-cell mono">35.3%</td>
+              <td class="num-cell mono">98%</td>
+              <td class="num-cell mono">128 / 647</td>
+              <td class="note-cell">Severe lower-left macular/peripheral capillary omission (BL quadrant FNR 37%, overall ThinFN 35.3%) with very low FP/GT (0.153).</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="DRIVE::05"
+                onclick="selectSample('cat1-capillary-omission', 'DRIVE::05')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">05</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test05+04+epoch+80.jpg">Test05+04+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.801</td>
+              <td class="num-cell mono">23.7%</td>
+              <td class="num-cell mono">14.1%</td>
+              <td class="num-cell mono">37.8%</td>
+              <td class="num-cell mono">98%</td>
+              <td class="num-cell mono">165 / 643</td>
+              <td class="note-cell">Misses dense perimacular fine vessel network across TR/BR quadrants (ThinFN 37.8%, FNR 23.7%) while main trunks stay crisp.</td>
+            </tr>
+            
+            <tr class="sample-row active-row" data-cat="cat1-capillary-omission" data-key="DRIVE::06"
+                onclick="selectSample('cat1-capillary-omission', 'DRIVE::06')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">06 <span class="rep-inline">★ Representative</span></td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test06+09+epoch+80.jpg">Test06+09+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.795</td>
+              <td class="num-cell mono">24.5%</td>
+              <td class="num-cell mono">14.5%</td>
+              <td class="num-cell mono">38.6%</td>
+              <td class="num-cell mono">98%</td>
+              <td class="num-cell mono">179 / 673</td>
+              <td class="note-cell">Primary Representative: Highest FNR in DRIVE (24.5%) and worst ThinFN (38.6%); extensive fine capillary dropout across TL/BL/TR.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="DRIVE::07"
+                onclick="selectSample('cat1-capillary-omission', 'DRIVE::07')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">07</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test20+07+epoch+80.jpg">Test20+07+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.804</td>
+              <td class="num-cell mono">23.9%</td>
+              <td class="num-cell mono">13.2%</td>
+              <td class="num-cell mono">37.5%</td>
+              <td class="num-cell mono">98%</td>
+              <td class="num-cell mono">149 / 561</td>
+              <td class="note-cell">High thin-vessel miss rate (ThinFN 37.5%, FNR 23.9%), concentrated in upper-left temporal periphery (TL FNR 36%) with minimal FP (0.132).</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="DRIVE::09"
+                onclick="selectSample('cat1-capillary-omission', 'DRIVE::09')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">09</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test06+09+epoch+80.jpg">Test06+09+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.792</td>
+              <td class="num-cell mono">22.1%</td>
+              <td class="num-cell mono">18.7%</td>
+              <td class="num-cell mono">33.5%</td>
+              <td class="num-cell mono">98%</td>
+              <td class="num-cell mono">173 / 583</td>
+              <td class="note-cell">Extensive loss of fine branching twigs in TR/BR quadrants (ThinFN 33.5%, FNR 22.1%); major arcades remain well-delineated.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="DRIVE::13"
+                onclick="selectSample('cat1-capillary-omission', 'DRIVE::13')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">13</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test01+13+epoch+80.jpg">Test01+13+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.798</td>
+              <td class="num-cell mono">22.4%</td>
+              <td class="num-cell mono">16.9%</td>
+              <td class="num-cell mono">36.0%</td>
+              <td class="num-cell mono">96%</td>
+              <td class="num-cell mono">202 / 628</td>
+              <td class="note-cell">Dense fine capillary tree in TL/BL is heavily pruned (ThinFN 36.0%, FNR 22.4%, TL FNR 31%), keeping FP/GT low (0.169).</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat1-capillary-omission" data-key="STARE::im0255"
+                onclick="selectSample('cat1-capillary-omission', 'STARE::im0255')">
+              <td><span class="ds-tag ds-tag-stare">STARE</span></td>
+              <td class="mono sample-name-cell">im0255</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples/Testim0255+im0291+epoch+39.jpg">Testim0255+im0291+epoch+39.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.821</td>
+              <td class="num-cell mono">24.6%</td>
+              <td class="num-cell mono">8.4%</td>
+              <td class="num-cell mono">38.0%</td>
+              <td class="num-cell mono">96%</td>
+              <td class="num-cell mono">238 / 171</td>
+              <td class="note-cell">Highest FNR across all 32 samples (24.6%, ThinFN 38.0%) and lowest FP/GT (0.084); drops fine central/macular capillary meshwork.</td>
+            </tr>
+            
+              </tbody>
+            </table>
+          </div>
+        </section>
+        
+        <section class="failure-section" id="cat2-vessel-dilation" style="--cat-accent: #00e5ff; --cat-accent-soft: rgba(0, 229, 255, 0.14);">
+          <div class="section-header">
+            <div class="section-title-block">
+              <div class="category-kicker">Failure Mode 2 · 9 Samples Across All 3 Datasets</div>
+              <h2>Vessel Dilation &amp; Parallel Branch Merging</h2>
+            </div>
+            <div class="cat-kpi-strip">
+              <div class="mini-kpi"><span>Avg Dice</span><strong>0.810</strong></div>
+              <div class="mini-kpi"><span>Avg FNR</span><strong>12.3%</strong></div>
+              <div class="mini-kpi"><span>Avg FP/GT</span><strong>28.8%</strong></div>
+              <div class="mini-kpi"><span>Avg Thin-FN</span><strong>21.3%</strong></div>
+            </div>
+          </div>
+
+          <div class="analysis-grid">
+            <div class="analysis-card">
+              <h4>Visual & Morphological Pattern</h4>
+              <p>Uniform 1–3 px cuff-like boundary over-thickening along primary and secondary trunks, causing closely spaced parallel vessels and acute bifurcations near the optic nerve head to fuse into thick undifferentiated blobs.</p>
+              <p class="sig-line"><strong>Quantitative Signature:</strong> Highest FP/GT ratios (0.219–0.414) paired with low FNR (10.3%–15.0%); 82%–98% of all false positives lie within a 2 px dilation halo of ground-truth vessel boundaries (ThickFP%).</p>
+            </div>
+            <div class="analysis-card">
+              <h4>Root Cause & Mitigation</h4>
+              <p><strong>Likely Cause:</strong> 4-view/8-view TTA probability averaging blurs sharp vessel edges, and global threshold tuning shifts downward to boost capillary sensitivity on the dataset—causing high-contrast main arcades to over-expand beyond their true caliber.</p>
+              <p class="mit-line"><strong>Actionable Fix:</strong> Incorporate boundary-aware loss (Hausdorff / Lovász-Softmax / Boundary IoU), apply probability sharpening prior to TTA fusion, and test vessel-caliber-adaptive or local contrast-normalized thresholding.</p>
+            </div>
+          </div>
+
+          <div class="switcher-panel">
+            <div class="switcher-header">
+              <span><strong>Samples Exhibiting This Failure</strong> (click any sample badge or table row below to inspect its triple-image group):</span>
+              <button class="reset-btn" onclick="selectSample('cat2-vessel-dilation', 'DRIVE::20')">
+                Reset to ★ Primary Representative (DRIVE: 20)
+              </button>
+            </div>
+            <div class="ds-badge-container">
+              <div class="ds-badge-group"><span class="ds-group-label ds-label-chase">CHASE (3)</span><div class="badge-row"><button class="sample-badge ds-chase" data-cat="cat2-vessel-dilation" data-key="CHASE::Image_11L" onclick="selectSample('cat2-vessel-dilation', 'CHASE::Image_11L')">Image_11L</button><button class="sample-badge ds-chase" data-cat="cat2-vessel-dilation" data-key="CHASE::Image_11R" onclick="selectSample('cat2-vessel-dilation', 'CHASE::Image_11R')">Image_11R</button><button class="sample-badge ds-chase" data-cat="cat2-vessel-dilation" data-key="CHASE::Image_12R" onclick="selectSample('cat2-vessel-dilation', 'CHASE::Image_12R')">Image_12R</button></div></div><div class="ds-badge-group"><span class="ds-group-label ds-label-drive">DRIVE (5)</span><div class="badge-row"><button class="sample-badge ds-drive" data-cat="cat2-vessel-dilation" data-key="DRIVE::01" onclick="selectSample('cat2-vessel-dilation', 'DRIVE::01')">01</button><button class="sample-badge ds-drive" data-cat="cat2-vessel-dilation" data-key="DRIVE::15" onclick="selectSample('cat2-vessel-dilation', 'DRIVE::15')">15</button><button class="sample-badge ds-drive" data-cat="cat2-vessel-dilation" data-key="DRIVE::18" onclick="selectSample('cat2-vessel-dilation', 'DRIVE::18')">18</button><button class="sample-badge ds-drive" data-cat="cat2-vessel-dilation" data-key="DRIVE::19" onclick="selectSample('cat2-vessel-dilation', 'DRIVE::19')">19</button><button class="sample-badge ds-drive active" data-cat="cat2-vessel-dilation" data-key="DRIVE::20" onclick="selectSample('cat2-vessel-dilation', 'DRIVE::20')">20<span class="rep-star" title="Primary Representative Sample">★ Rep</span></button></div></div><div class="ds-badge-group"><span class="ds-group-label ds-label-stare">STARE (1)</span><div class="badge-row"><button class="sample-badge ds-stare" data-cat="cat2-vessel-dilation" data-key="STARE::im0291" onclick="selectSample('cat2-vessel-dilation', 'STARE::im0291')">im0291</button></div></div>
+            </div>
+          </div>
+
+          <div class="viewer-card" id="viewer-cat2-vessel-dilation" data-mode="triple">
+            <div class="viewer-toolbar">
+              <div class="viewer-title-info">
+                <span class="ds-tag ds-tag-drive" id="v-ds-cat2-vessel-dilation">DRIVE</span>
+                <strong class="viewer-sample-name" id="v-name-cat2-vessel-dilation">20</strong>
+                <span class="rep-inline" id="v-rep-badge-cat2-vessel-dilation">★ Primary Representative</span>
+                <span class="viewer-source" id="v-src-cat2-vessel-dilation">Test20+07+epoch+80.jpg (Left Column, 592×592)</span>
+              </div>
+              <div class="view-mode-toggle" role="group" aria-label="Viewer Display Mode">
+                <button class="mode-btn active" data-mode="triple" onclick="setViewMode('cat2-vessel-dilation', 'triple', this)">3-Panel (Orig | Pred | GT)</button>
+                <button class="mode-btn" data-mode="errmap" onclick="setViewMode('cat2-vessel-dilation', 'errmap', this)">3-Panel w/ Error Map</button>
+                <button class="mode-btn" data-mode="quad" onclick="setViewMode('cat2-vessel-dilation', 'quad', this)">4-Panel (+ Error Diff)</button>
+              </div>
+            </div>
+
+            <div class="error-legend" id="legend-cat2-vessel-dilation">
+              <span><i class="swatch sw-tp"></i> True Positive (Correct Vessel)</span>
+              <span><i class="swatch sw-fn"></i> False Negative (Missed Vessel)</span>
+              <span><i class="swatch sw-fp"></i> False Positive (Over-Segmented)</span>
+              <span class="legend-tip">Click any image panel to zoom to full native resolution</span>
+            </div>
+
+            <div class="triple-grid" id="grid-cat2-vessel-dilation">
+              <figure class="panel-fig">
+                <figcaption>1. Original Fundus Image</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-orig-cat2-vessel-dilation" src="assets/DRIVE_20_orig.jpg" alt="Original Fundus Image" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig panel-pred-slot" id="slot-pred-cat2-vessel-dilation">
+                <figcaption id="cap-pred-cat2-vessel-dilation">2. Predicted Segmentation Map</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-pred-cat2-vessel-dilation" src="assets/DRIVE_20_pred.jpg" alt="Predicted Segmentation Map" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig panel-err-slot" id="slot-err-cat2-vessel-dilation">
+                <figcaption>Error Map (TP=White, FN=Red, FP=Cyan)</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-err-cat2-vessel-dilation" src="assets/DRIVE_20_err.jpg" alt="Color-Coded Error Map" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig">
+                <figcaption>3. Ground-Truth Vessel Mask</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-gt-cat2-vessel-dilation" src="assets/DRIVE_20_gt.jpg" alt="Ground-Truth Vessel Mask" loading="lazy" />
+                </div>
+              </figure>
+            </div>
+
+            <div class="viewer-caption-bar">
+              <div class="caption-metrics" id="v-metrics-cat2-vessel-dilation">
+                <span>Dice: <strong>0.776</strong></span>
+                <span>IoU: <strong>0.634</strong></span>
+                <span>FNR (Missed): <strong>10.3%</strong></span>
+                <span>FP/GT Ratio: <strong>41.4%</strong></span>
+                <span>Thin-Vessel FN: <strong>14.5%</strong></span>
+                <span>Thickening FP: <strong>90%</strong></span>
+                <span>CCs (Pred/GT): <strong>147 / 137</strong></span>
+              </div>
+              <div class="caption-note" id="v-note-cat2-vessel-dilation">Primary Representative: Worst Dice in DRIVE (0.776) and highest FP/GT overall (0.414, TL FP/GT 0.47); pronounced cuff-like dilation &amp; fusion.</div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="sample-table">
+              <thead>
+                <tr>
+                  <th>Dataset</th>
+                  <th>Sample</th>
+                  <th>Source Composite (Col)</th>
+                  <th class="num-cell">Dice</th>
+                  <th class="num-cell">FNR</th>
+                  <th class="num-cell">FP/GT</th>
+                  <th class="num-cell">Thin FN%</th>
+                  <th class="num-cell">Thick FP%</th>
+                  <th class="num-cell">CCs (P/G)</th>
+                  <th>Sample Failure Observation</th>
+                </tr>
+              </thead>
+              <tbody>
+                
+            <tr class="sample-row" data-cat="cat2-vessel-dilation" data-key="CHASE::Image_11L"
+                onclick="selectSample('cat2-vessel-dilation', 'CHASE::Image_11L')">
+              <td><span class="ds-tag ds-tag-chase">CHASE</span></td>
+              <td class="mono sample-name-cell">Image_11L</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_11L+Image_13R+epoch+53.jpg">TestImage_11L+Image_13R+epoch+53.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.827</td>
+              <td class="num-cell mono">13.2%</td>
+              <td class="num-cell mono">23.1%</td>
+              <td class="num-cell mono">28.6%</td>
+              <td class="num-cell mono">86%</td>
+              <td class="num-cell mono">139 / 315</td>
+              <td class="note-cell">Consistent boundary thickening along main temporal arcades (ThickFP% 86%, FP/GT 0.231) merging close parallel disc branches.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat2-vessel-dilation" data-key="CHASE::Image_11R"
+                onclick="selectSample('cat2-vessel-dilation', 'CHASE::Image_11R')">
+              <td><span class="ds-tag ds-tag-chase">CHASE</span></td>
+              <td class="mono sample-name-cell">Image_11R</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_11R+Image_14R+epoch+53.jpg">TestImage_11R+Image_14R+epoch+53.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.828</td>
+              <td class="num-cell mono">10.9%</td>
+              <td class="num-cell mono">26.1%</td>
+              <td class="num-cell mono">23.9%</td>
+              <td class="num-cell mono">82%</td>
+              <td class="num-cell mono">81 / 135</td>
+              <td class="note-cell">Lowest FNR in CHASE (10.9%) offset by high FP/GT (0.261); over-dilation fuses parallel vessels near optic disc and BL arcade.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat2-vessel-dilation" data-key="CHASE::Image_12R"
+                onclick="selectSample('cat2-vessel-dilation', 'CHASE::Image_12R')">
+              <td><span class="ds-tag ds-tag-chase">CHASE</span></td>
+              <td class="mono sample-name-cell">Image_12R</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_12R+Image_13L+epoch+53.jpg">TestImage_12R+Image_13L+epoch+53.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.822</td>
+              <td class="num-cell mono">15.0%</td>
+              <td class="num-cell mono">21.9%</td>
+              <td class="num-cell mono">32.2%</td>
+              <td class="num-cell mono">84%</td>
+              <td class="num-cell mono">148 / 267</td>
+              <td class="note-cell">Over-thickened superior/inferior main trunks (ThickFP% 84%, FP/GT 0.219) causing adjacent twin vessels in TL to coalesce.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat2-vessel-dilation" data-key="DRIVE::01"
+                onclick="selectSample('cat2-vessel-dilation', 'DRIVE::01')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">01</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test01+13+epoch+80.jpg">Test01+13+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.805</td>
+              <td class="num-cell mono">12.5%</td>
+              <td class="num-cell mono">29.9%</td>
+              <td class="num-cell mono">18.6%</td>
+              <td class="num-cell mono">97%</td>
+              <td class="num-cell mono">152 / 447</td>
+              <td class="note-cell">Strong wall dilation across all quadrants (FP/GT 0.299, ThickFP% 97%) merging closely running vessels near the temporal optic rim.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat2-vessel-dilation" data-key="DRIVE::15"
+                onclick="selectSample('cat2-vessel-dilation', 'DRIVE::15')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">15</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test11+15+epoch+80.jpg">Test11+15+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.802</td>
+              <td class="num-cell mono">14.8%</td>
+              <td class="num-cell mono">27.1%</td>
+              <td class="num-cell mono">21.9%</td>
+              <td class="num-cell mono">97%</td>
+              <td class="num-cell mono">121 / 448</td>
+              <td class="note-cell">High recall (FNR 14.8%) accompanied by 27.1% FP/GT ratio (ThickFP% 97%), visibly fattening main arcade calibers.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat2-vessel-dilation" data-key="DRIVE::18"
+                onclick="selectSample('cat2-vessel-dilation', 'DRIVE::18')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">18</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test18+19+epoch+80.jpg">Test18+19+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.787</td>
+              <td class="num-cell mono">11.8%</td>
+              <td class="num-cell mono">35.9%</td>
+              <td class="num-cell mono">16.9%</td>
+              <td class="num-cell mono">96%</td>
+              <td class="num-cell mono">146 / 114</td>
+              <td class="note-cell">Second highest FP/GT in DRIVE (0.359, ThickFP% 95%) and low Dice (0.787); aggressive wall dilation thickens trunks and merges disc bifurcations.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat2-vessel-dilation" data-key="DRIVE::19"
+                onclick="selectSample('cat2-vessel-dilation', 'DRIVE::19')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">19</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test18+19+epoch+80.jpg">Test18+19+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.815</td>
+              <td class="num-cell mono">10.9%</td>
+              <td class="num-cell mono">29.6%</td>
+              <td class="num-cell mono">15.5%</td>
+              <td class="num-cell mono">96%</td>
+              <td class="num-cell mono">192 / 301</td>
+              <td class="note-cell">Heavy boundary expansion (FP/GT 0.296, ThickFP% 96%) with low FNR (10.9%), fusing narrow inter-vessel gaps around the optic nerve head.</td>
+            </tr>
+            
+            <tr class="sample-row active-row" data-cat="cat2-vessel-dilation" data-key="DRIVE::20"
+                onclick="selectSample('cat2-vessel-dilation', 'DRIVE::20')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">20 <span class="rep-inline">★ Representative</span></td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test20+07+epoch+80.jpg">Test20+07+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.776</td>
+              <td class="num-cell mono">10.3%</td>
+              <td class="num-cell mono">41.4%</td>
+              <td class="num-cell mono">14.5%</td>
+              <td class="num-cell mono">90%</td>
+              <td class="num-cell mono">147 / 137</td>
+              <td class="note-cell">Primary Representative: Worst Dice in DRIVE (0.776) and highest FP/GT overall (0.414, TL FP/GT 0.47); pronounced cuff-like dilation &amp; fusion.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat2-vessel-dilation" data-key="STARE::im0291"
+                onclick="selectSample('cat2-vessel-dilation', 'STARE::im0291')">
+              <td><span class="ds-tag ds-tag-stare">STARE</span></td>
+              <td class="mono sample-name-cell">im0291</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples/Testim0255+im0291+epoch+39.jpg">Testim0255+im0291+epoch+39.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.831</td>
+              <td class="num-cell mono">11.7%</td>
+              <td class="num-cell mono">24.2%</td>
+              <td class="num-cell mono">19.8%</td>
+              <td class="num-cell mono">90%</td>
+              <td class="num-cell mono">31 / 53</td>
+              <td class="note-cell">Despite peripheral haze, exhibits aggressive trunk thickening (FP/GT 0.242, ThickFP% 90%) and low FNR (11.7%), merging disc-adjacent trunks.</td>
+            </tr>
+            
+              </tbody>
+            </table>
+          </div>
+        </section>
+        
+        <section class="failure-section" id="cat3-topological-fragmentation" style="--cat-accent: #fbbf24; --cat-accent-soft: rgba(251, 191, 36, 0.14);">
+          <div class="section-header">
+            <div class="section-title-block">
+              <div class="category-kicker">Failure Mode 3 · 6 Samples Across All 3 Datasets</div>
+              <h2>Topological Fragmentation &amp; Discontinuity</h2>
+            </div>
+            <div class="cat-kpi-strip">
+              <div class="mini-kpi"><span>Avg Dice</span><strong>0.801</strong></div>
+              <div class="mini-kpi"><span>Avg FNR</span><strong>16.9%</strong></div>
+              <div class="mini-kpi"><span>Avg FP/GT</span><strong>24.4%</strong></div>
+              <div class="mini-kpi"><span>Avg Thin-FN</span><strong>27.7%</strong></div>
+            </div>
+          </div>
+
+          <div class="analysis-grid">
+            <div class="analysis-card">
+              <h4>Visual & Morphological Pattern</h4>
+              <p>Intermediate-caliber vessels and branching arcades intermittently drop below the segmentation threshold, disintegrating into disconnected dashed/dotted islands, broken junctions, and gaps along continuous vascular paths.</p>
+              <p class="sig-line"><strong>Quantitative Signature:</strong> Markedly elevated predicted-to-GT connected component ratios or severely fragmented intermediate branches (e.g., DRIVE 16: 200 pred vs. 78 GT CCs [2.56×]; CHASE Image_14R: 91 pred vs. 2 GT CCs), paired with balanced moderate FNR (14.9%–19.8%) and FP/GT (0.220–0.265).</p>
+            </div>
+            <div class="analysis-card">
+              <h4>Root Cause & Mitigation</h4>
+              <p><strong>Likely Cause:</strong> Pixel-wise Dice + Cross-Entropy optimizes per-pixel overlap without enforcing topological continuity; central arterial light reflexes or slight local contrast dips along mid-caliber vessels sever the binary mask into isolated islands.</p>
+              <p class="mit-line"><strong>Actionable Fix:</strong> Train with topology-preserving clDice / Persistent Homology loss, introduce morphological directional closing or graph-based vessel reconnection post-processing.</p>
+            </div>
+          </div>
+
+          <div class="switcher-panel">
+            <div class="switcher-header">
+              <span><strong>Samples Exhibiting This Failure</strong> (click any sample badge or table row below to inspect its triple-image group):</span>
+              <button class="reset-btn" onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::16')">
+                Reset to ★ Primary Representative (DRIVE: 16)
+              </button>
+            </div>
+            <div class="ds-badge-container">
+              <div class="ds-badge-group"><span class="ds-group-label ds-label-chase">CHASE (1)</span><div class="badge-row"><button class="sample-badge ds-chase" data-cat="cat3-topological-fragmentation" data-key="CHASE::Image_14R" onclick="selectSample('cat3-topological-fragmentation', 'CHASE::Image_14R')">Image_14R</button></div></div><div class="ds-badge-group"><span class="ds-group-label ds-label-drive">DRIVE (4)</span><div class="badge-row"><button class="sample-badge ds-drive" data-cat="cat3-topological-fragmentation" data-key="DRIVE::10" onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::10')">10</button><button class="sample-badge ds-drive" data-cat="cat3-topological-fragmentation" data-key="DRIVE::11" onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::11')">11</button><button class="sample-badge ds-drive" data-cat="cat3-topological-fragmentation" data-key="DRIVE::12" onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::12')">12</button><button class="sample-badge ds-drive active" data-cat="cat3-topological-fragmentation" data-key="DRIVE::16" onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::16')">16<span class="rep-star" title="Primary Representative Sample">★ Rep</span></button></div></div><div class="ds-badge-group"><span class="ds-group-label ds-label-stare">STARE (1)</span><div class="badge-row"><button class="sample-badge ds-stare" data-cat="cat3-topological-fragmentation" data-key="STARE::im0324" onclick="selectSample('cat3-topological-fragmentation', 'STARE::im0324')">im0324</button></div></div>
+            </div>
+          </div>
+
+          <div class="viewer-card" id="viewer-cat3-topological-fragmentation" data-mode="triple">
+            <div class="viewer-toolbar">
+              <div class="viewer-title-info">
+                <span class="ds-tag ds-tag-drive" id="v-ds-cat3-topological-fragmentation">DRIVE</span>
+                <strong class="viewer-sample-name" id="v-name-cat3-topological-fragmentation">16</strong>
+                <span class="rep-inline" id="v-rep-badge-cat3-topological-fragmentation">★ Primary Representative</span>
+                <span class="viewer-source" id="v-src-cat3-topological-fragmentation">Test02+16+epoch+80.jpg (Right Column, 592×592)</span>
+              </div>
+              <div class="view-mode-toggle" role="group" aria-label="Viewer Display Mode">
+                <button class="mode-btn active" data-mode="triple" onclick="setViewMode('cat3-topological-fragmentation', 'triple', this)">3-Panel (Orig | Pred | GT)</button>
+                <button class="mode-btn" data-mode="errmap" onclick="setViewMode('cat3-topological-fragmentation', 'errmap', this)">3-Panel w/ Error Map</button>
+                <button class="mode-btn" data-mode="quad" onclick="setViewMode('cat3-topological-fragmentation', 'quad', this)">4-Panel (+ Error Diff)</button>
+              </div>
+            </div>
+
+            <div class="error-legend" id="legend-cat3-topological-fragmentation">
+              <span><i class="swatch sw-tp"></i> True Positive (Correct Vessel)</span>
+              <span><i class="swatch sw-fn"></i> False Negative (Missed Vessel)</span>
+              <span><i class="swatch sw-fp"></i> False Positive (Over-Segmented)</span>
+              <span class="legend-tip">Click any image panel to zoom to full native resolution</span>
+            </div>
+
+            <div class="triple-grid" id="grid-cat3-topological-fragmentation">
+              <figure class="panel-fig">
+                <figcaption>1. Original Fundus Image</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-orig-cat3-topological-fragmentation" src="assets/DRIVE_16_orig.jpg" alt="Original Fundus Image" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig panel-pred-slot" id="slot-pred-cat3-topological-fragmentation">
+                <figcaption id="cap-pred-cat3-topological-fragmentation">2. Predicted Segmentation Map</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-pred-cat3-topological-fragmentation" src="assets/DRIVE_16_pred.jpg" alt="Predicted Segmentation Map" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig panel-err-slot" id="slot-err-cat3-topological-fragmentation">
+                <figcaption>Error Map (TP=White, FN=Red, FP=Cyan)</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-err-cat3-topological-fragmentation" src="assets/DRIVE_16_err.jpg" alt="Color-Coded Error Map" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig">
+                <figcaption>3. Ground-Truth Vessel Mask</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-gt-cat3-topological-fragmentation" src="assets/DRIVE_16_gt.jpg" alt="Ground-Truth Vessel Mask" loading="lazy" />
+                </div>
+              </figure>
+            </div>
+
+            <div class="viewer-caption-bar">
+              <div class="caption-metrics" id="v-metrics-cat3-topological-fragmentation">
+                <span>Dice: <strong>0.805</strong></span>
+                <span>IoU: <strong>0.673</strong></span>
+                <span>FNR (Missed): <strong>17.8%</strong></span>
+                <span>FP/GT Ratio: <strong>22.0%</strong></span>
+                <span>Thin-Vessel FN: <strong>25.3%</strong></span>
+                <span>Thickening FP: <strong>95%</strong></span>
+                <span>CCs (Pred/GT): <strong>200 / 78</strong></span>
+              </div>
+              <div class="caption-note" id="v-note-cat3-topological-fragmentation">Primary Representative: Extreme CC inflation (200 predicted vs. 78 GT = 2.56×); mid-caliber temporal vessels disintegrate into beaded islands.</div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="sample-table">
+              <thead>
+                <tr>
+                  <th>Dataset</th>
+                  <th>Sample</th>
+                  <th>Source Composite (Col)</th>
+                  <th class="num-cell">Dice</th>
+                  <th class="num-cell">FNR</th>
+                  <th class="num-cell">FP/GT</th>
+                  <th class="num-cell">Thin FN%</th>
+                  <th class="num-cell">Thick FP%</th>
+                  <th class="num-cell">CCs (P/G)</th>
+                  <th>Sample Failure Observation</th>
+                </tr>
+              </thead>
+              <tbody>
+                
+            <tr class="sample-row" data-cat="cat3-topological-fragmentation" data-key="CHASE::Image_14R"
+                onclick="selectSample('cat3-topological-fragmentation', 'CHASE::Image_14R')">
+              <td><span class="ds-tag ds-tag-chase">CHASE</span></td>
+              <td class="mono sample-name-cell">Image_14R</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_11R+Image_14R+epoch+53.jpg">TestImage_11R+Image_14R+epoch+53.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.809</td>
+              <td class="num-cell mono">14.9%</td>
+              <td class="num-cell mono">25.3%</td>
+              <td class="num-cell mono">30.8%</td>
+              <td class="num-cell mono">68%</td>
+              <td class="num-cell mono">91 / 2</td>
+              <td class="note-cell">GT has 2 connected trees while prediction fractures into 91 components; breaks dark-region secondary branches and adds distant fragments.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat3-topological-fragmentation" data-key="DRIVE::10"
+                onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::10')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">10</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test10+12+epoch+80.jpg">Test10+12+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.793</td>
+              <td class="num-cell mono">17.4%</td>
+              <td class="num-cell mono">25.6%</td>
+              <td class="num-cell mono">27.4%</td>
+              <td class="num-cell mono">98%</td>
+              <td class="num-cell mono">162 / 950</td>
+              <td class="note-cell">Mid-caliber branches break into dashed segments across BL/TL (162 CCs), while central reflex splits thicker trunks slightly.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat3-topological-fragmentation" data-key="DRIVE::11"
+                onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::11')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">11</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test11+15+epoch+80.jpg">Test11+15+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.787</td>
+              <td class="num-cell mono">19.8%</td>
+              <td class="num-cell mono">23.5%</td>
+              <td class="num-cell mono">29.7%</td>
+              <td class="num-cell mono">98%</td>
+              <td class="num-cell mono">186 / 1024</td>
+              <td class="note-cell">Shows a major topological gap severing the superior-right (TR) peripheral arcade (TR FNR 36%) plus fragmented intermediate crossings.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat3-topological-fragmentation" data-key="DRIVE::12"
+                onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::12')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">12</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test10+12+epoch+80.jpg">Test10+12+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.812</td>
+              <td class="num-cell mono">15.6%</td>
+              <td class="num-cell mono">23.3%</td>
+              <td class="num-cell mono">24.8%</td>
+              <td class="num-cell mono">97%</td>
+              <td class="num-cell mono">137 / 489</td>
+              <td class="note-cell">Intermediate temporal vessels fragment into short disconnected dashes and dots, especially in TR/BR quadrants (BR FNR 21%).</td>
+            </tr>
+            
+            <tr class="sample-row active-row" data-cat="cat3-topological-fragmentation" data-key="DRIVE::16"
+                onclick="selectSample('cat3-topological-fragmentation', 'DRIVE::16')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">16 <span class="rep-inline">★ Representative</span></td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test02+16+epoch+80.jpg">Test02+16+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.805</td>
+              <td class="num-cell mono">17.8%</td>
+              <td class="num-cell mono">22.0%</td>
+              <td class="num-cell mono">25.3%</td>
+              <td class="num-cell mono">95%</td>
+              <td class="num-cell mono">200 / 78</td>
+              <td class="note-cell">Primary Representative: Extreme CC inflation (200 predicted vs. 78 GT = 2.56×); mid-caliber temporal vessels disintegrate into beaded islands.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat3-topological-fragmentation" data-key="STARE::im0324"
+                onclick="selectSample('cat3-topological-fragmentation', 'STARE::im0324')">
+              <td><span class="ds-tag ds-tag-stare">STARE</span></td>
+              <td class="mono sample-name-cell">im0324</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples/Testim0319+im0324+epoch+39.jpg">Testim0319+im0324+epoch+39.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.798</td>
+              <td class="num-cell mono">16.1%</td>
+              <td class="num-cell mono">26.5%</td>
+              <td class="num-cell mono">27.9%</td>
+              <td class="num-cell mono">74%</td>
+              <td class="num-cell mono">63 / 41</td>
+              <td class="note-cell">Dense upper-left vascular tree fractures into dotted islands (63 vs. 41 CCs, TL FNR 20%) alongside disconnected false fragments (DistFP 1618).</td>
+            </tr>
+            
+              </tbody>
+            </table>
+          </div>
+        </section>
+        
+        <section class="failure-section" id="cat4-illumination-lesion" style="--cat-accent: #c084fc; --cat-accent-soft: rgba(192, 132, 252, 0.14);">
+          <div class="section-header">
+            <div class="section-title-block">
+              <div class="category-kicker">Failure Mode 4 · 7 Samples Across All 3 Datasets</div>
+              <h2>Low-Contrast / Illumination &amp; Lesion Interference</h2>
+            </div>
+            <div class="cat-kpi-strip">
+              <div class="mini-kpi"><span>Avg Dice</span><strong>0.801</strong></div>
+              <div class="mini-kpi"><span>Avg FNR</span><strong>17.3%</strong></div>
+              <div class="mini-kpi"><span>Avg FP/GT</span><strong>23.9%</strong></div>
+              <div class="mini-kpi"><span>Avg Thin-FN</span><strong>28.8%</strong></div>
+            </div>
+          </div>
+
+          <div class="analysis-grid">
+            <div class="analysis-card">
+              <h4>Visual & Morphological Pattern</h4>
+              <p>Regional vessel dropouts and spurious false-positive clusters triggered by photometric extremes (dark peripheral vignetting, bright peripapillary reflections, haze/glare) or retinal pathologies (hard exudate clusters, hemorrhages, microaneurysms).</p>
+              <p class="sig-line"><strong>Quantitative Signature:</strong> Strong spatial asymmetry in quadrant FNR/FP (up to 0.53 quadrant FP/GT in STARE im0319), elevated distant false positives outside vessel masks, or severe FOV darkness (74%–83% dark pixels in CHASE Image_13L/13R) and bright haze/glare.</p>
+            </div>
+            <div class="analysis-card">
+              <h4>Root Cause & Mitigation</h4>
+              <p><strong>Likely Cause:</strong> Inhomogeneous fundus illumination shifts local intensity outside the learned green-channel contrast regime, while sharp edges of hard exudates, hemorrhages, and peripapillary fibrous sheaths trigger false-positive vessel responses in the conv-adapter features.</p>
+              <p class="mit-line"><strong>Actionable Fix:</strong> Apply green-channel CLAHE + illumination bias-field correction during preprocessing, augment training with synthetic vignetting/glare and lesion masks, and add hard-negative mining around lesions.</p>
+            </div>
+          </div>
+
+          <div class="switcher-panel">
+            <div class="switcher-header">
+              <span><strong>Samples Exhibiting This Failure</strong> (click any sample badge or table row below to inspect its triple-image group):</span>
+              <button class="reset-btn" onclick="selectSample('cat4-illumination-lesion', 'CHASE::Image_13R')">
+                Reset to ★ Primary Representative (CHASE: Image_13R)
+              </button>
+            </div>
+            <div class="ds-badge-container">
+              <div class="ds-badge-group"><span class="ds-group-label ds-label-chase">CHASE (2)</span><div class="badge-row"><button class="sample-badge ds-chase" data-cat="cat4-illumination-lesion" data-key="CHASE::Image_13L" onclick="selectSample('cat4-illumination-lesion', 'CHASE::Image_13L')">Image_13L</button><button class="sample-badge ds-chase active" data-cat="cat4-illumination-lesion" data-key="CHASE::Image_13R" onclick="selectSample('cat4-illumination-lesion', 'CHASE::Image_13R')">Image_13R<span class="rep-star" title="Primary Representative Sample">★ Rep</span></button></div></div><div class="ds-badge-group"><span class="ds-group-label ds-label-drive">DRIVE (4)</span><div class="badge-row"><button class="sample-badge ds-drive" data-cat="cat4-illumination-lesion" data-key="DRIVE::03" onclick="selectSample('cat4-illumination-lesion', 'DRIVE::03')">03</button><button class="sample-badge ds-drive" data-cat="cat4-illumination-lesion" data-key="DRIVE::08" onclick="selectSample('cat4-illumination-lesion', 'DRIVE::08')">08</button><button class="sample-badge ds-drive" data-cat="cat4-illumination-lesion" data-key="DRIVE::14" onclick="selectSample('cat4-illumination-lesion', 'DRIVE::14')">14</button><button class="sample-badge ds-drive" data-cat="cat4-illumination-lesion" data-key="DRIVE::17" onclick="selectSample('cat4-illumination-lesion', 'DRIVE::17')">17</button></div></div><div class="ds-badge-group"><span class="ds-group-label ds-label-stare">STARE (1)</span><div class="badge-row"><button class="sample-badge ds-stare" data-cat="cat4-illumination-lesion" data-key="STARE::im0319" onclick="selectSample('cat4-illumination-lesion', 'STARE::im0319')">im0319</button></div></div>
+            </div>
+          </div>
+
+          <div class="viewer-card" id="viewer-cat4-illumination-lesion" data-mode="triple">
+            <div class="viewer-toolbar">
+              <div class="viewer-title-info">
+                <span class="ds-tag ds-tag-chase" id="v-ds-cat4-illumination-lesion">CHASE</span>
+                <strong class="viewer-sample-name" id="v-name-cat4-illumination-lesion">Image_13R</strong>
+                <span class="rep-inline" id="v-rep-badge-cat4-illumination-lesion">★ Primary Representative</span>
+                <span class="viewer-source" id="v-src-cat4-illumination-lesion">TestImage_11L+Image_13R+epoch+53.jpg (Right Column, 1008×1008)</span>
+              </div>
+              <div class="view-mode-toggle" role="group" aria-label="Viewer Display Mode">
+                <button class="mode-btn active" data-mode="triple" onclick="setViewMode('cat4-illumination-lesion', 'triple', this)">3-Panel (Orig | Pred | GT)</button>
+                <button class="mode-btn" data-mode="errmap" onclick="setViewMode('cat4-illumination-lesion', 'errmap', this)">3-Panel w/ Error Map</button>
+                <button class="mode-btn" data-mode="quad" onclick="setViewMode('cat4-illumination-lesion', 'quad', this)">4-Panel (+ Error Diff)</button>
+              </div>
+            </div>
+
+            <div class="error-legend" id="legend-cat4-illumination-lesion">
+              <span><i class="swatch sw-tp"></i> True Positive (Correct Vessel)</span>
+              <span><i class="swatch sw-fn"></i> False Negative (Missed Vessel)</span>
+              <span><i class="swatch sw-fp"></i> False Positive (Over-Segmented)</span>
+              <span class="legend-tip">Click any image panel to zoom to full native resolution</span>
+            </div>
+
+            <div class="triple-grid" id="grid-cat4-illumination-lesion">
+              <figure class="panel-fig">
+                <figcaption>1. Original Fundus Image</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-orig-cat4-illumination-lesion" src="assets/CHASE_Image_13R_orig.jpg" alt="Original Fundus Image" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig panel-pred-slot" id="slot-pred-cat4-illumination-lesion">
+                <figcaption id="cap-pred-cat4-illumination-lesion">2. Predicted Segmentation Map</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-pred-cat4-illumination-lesion" src="assets/CHASE_Image_13R_pred.jpg" alt="Predicted Segmentation Map" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig panel-err-slot" id="slot-err-cat4-illumination-lesion">
+                <figcaption>Error Map (TP=White, FN=Red, FP=Cyan)</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-err-cat4-illumination-lesion" src="assets/CHASE_Image_13R_err.jpg" alt="Color-Coded Error Map" loading="lazy" />
+                </div>
+              </figure>
+              <figure class="panel-fig">
+                <figcaption>3. Ground-Truth Vessel Mask</figcaption>
+                <div class="img-frame" onclick="openZoom(this)">
+                  <img id="img-gt-cat4-illumination-lesion" src="assets/CHASE_Image_13R_gt.jpg" alt="Ground-Truth Vessel Mask" loading="lazy" />
+                </div>
+              </figure>
+            </div>
+
+            <div class="viewer-caption-bar">
+              <div class="caption-metrics" id="v-metrics-cat4-illumination-lesion">
+                <span>Dice: <strong>0.796</strong></span>
+                <span>IoU: <strong>0.662</strong></span>
+                <span>FNR (Missed): <strong>20.1%</strong></span>
+                <span>FP/GT Ratio: <strong>20.8%</strong></span>
+                <span>Thin-Vessel FN: <strong>37.1%</strong></span>
+                <span>Thickening FP: <strong>78%</strong></span>
+                <span>CCs (Pred/GT): <strong>110 / 213</strong></span>
+              </div>
+              <div class="caption-note" id="v-note-cat4-illumination-lesion">Primary Representative: Lowest Dice in CHASE (0.796); extreme dark FOV (83% pixels &lt;70 lum) erases distal branches while bright disc fibrosis triggers FP.</div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="sample-table">
+              <thead>
+                <tr>
+                  <th>Dataset</th>
+                  <th>Sample</th>
+                  <th>Source Composite (Col)</th>
+                  <th class="num-cell">Dice</th>
+                  <th class="num-cell">FNR</th>
+                  <th class="num-cell">FP/GT</th>
+                  <th class="num-cell">Thin FN%</th>
+                  <th class="num-cell">Thick FP%</th>
+                  <th class="num-cell">CCs (P/G)</th>
+                  <th>Sample Failure Observation</th>
+                </tr>
+              </thead>
+              <tbody>
+                
+            <tr class="sample-row" data-cat="cat4-illumination-lesion" data-key="CHASE::Image_13L"
+                onclick="selectSample('cat4-illumination-lesion', 'CHASE::Image_13L')">
+              <td><span class="ds-tag ds-tag-chase">CHASE</span></td>
+              <td class="mono sample-name-cell">Image_13L</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_12R+Image_13L+epoch+53.jpg">TestImage_12R+Image_13L+epoch+53.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.821</td>
+              <td class="num-cell mono">16.3%</td>
+              <td class="num-cell mono">20.3%</td>
+              <td class="num-cell mono">32.4%</td>
+              <td class="num-cell mono">83%</td>
+              <td class="num-cell mono">69 / 178</td>
+              <td class="note-cell">Severe under-illumination across temporal FOV (74% dark pixels, mean lum 61.1) plus pale peripapillary sheen causing uneven dropouts.</td>
+            </tr>
+            
+            <tr class="sample-row active-row" data-cat="cat4-illumination-lesion" data-key="CHASE::Image_13R"
+                onclick="selectSample('cat4-illumination-lesion', 'CHASE::Image_13R')">
+              <td><span class="ds-tag ds-tag-chase">CHASE</span></td>
+              <td class="mono sample-name-cell">Image_13R <span class="rep-inline">★ Representative</span></td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_11L+Image_13R+epoch+53.jpg">TestImage_11L+Image_13R+epoch+53.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.796</td>
+              <td class="num-cell mono">20.1%</td>
+              <td class="num-cell mono">20.8%</td>
+              <td class="num-cell mono">37.1%</td>
+              <td class="num-cell mono">78%</td>
+              <td class="num-cell mono">110 / 213</td>
+              <td class="note-cell">Primary Representative: Lowest Dice in CHASE (0.796); extreme dark FOV (83% pixels &lt;70 lum) erases distal branches while bright disc fibrosis triggers FP.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat4-illumination-lesion" data-key="DRIVE::03"
+                onclick="selectSample('cat4-illumination-lesion', 'DRIVE::03')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">03</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test03+17+epoch+80.jpg">Test03+17+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.802</td>
+              <td class="num-cell mono">20.5%</td>
+              <td class="num-cell mono">18.7%</td>
+              <td class="num-cell mono">34.4%</td>
+              <td class="num-cell mono">92%</td>
+              <td class="num-cell mono">146 / 482</td>
+              <td class="note-cell">Darkest DRIVE fundus (mean lum 82.1, 14% dark pixels) with scattered exudate specks; low contrast drops TR/upper-disc vessels (TR FNR 29%).</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat4-illumination-lesion" data-key="DRIVE::08"
+                onclick="selectSample('cat4-illumination-lesion', 'DRIVE::08')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">08</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test14+08+epoch+80.jpg">Test14+08+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.801</td>
+              <td class="num-cell mono">18.7%</td>
+              <td class="num-cell mono">21.8%</td>
+              <td class="num-cell mono">29.9%</td>
+              <td class="num-cell mono">97%</td>
+              <td class="num-cell mono">133 / 568</td>
+              <td class="note-cell">Prominent bright yellow hard exudate cluster in macular/BL region and bright optic disc cause TL vessel dropout (FNR 26%) and BL false positives.</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat4-illumination-lesion" data-key="DRIVE::14"
+                onclick="selectSample('cat4-illumination-lesion', 'DRIVE::14')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">14</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test14+08+epoch+80.jpg">Test14+08+epoch+80.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.802</td>
+              <td class="num-cell mono">14.7%</td>
+              <td class="num-cell mono">27.4%</td>
+              <td class="num-cell mono">23.5%</td>
+              <td class="num-cell mono">95%</td>
+              <td class="num-cell mono">166 / 543</td>
+              <td class="note-cell">Dark red retinal hemorrhages and microaneurysm clusters in BL quadrant induce false-positive spots and local vessel confusion (BL FP/GT 38%).</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat4-illumination-lesion" data-key="DRIVE::17"
+                onclick="selectSample('cat4-illumination-lesion', 'DRIVE::17')">
+              <td><span class="ds-tag ds-tag-drive">DRIVE</span></td>
+              <td class="mono sample-name-cell">17</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test03+17+epoch+80.jpg">Test03+17+epoch+80.jpg <span class="col-pill">Right</span></td>
+              <td class="num-cell mono">0.789</td>
+              <td class="num-cell mono">17.0%</td>
+              <td class="num-cell mono">27.3%</td>
+              <td class="num-cell mono">25.0%</td>
+              <td class="num-cell mono">92%</td>
+              <td class="num-cell mono">165 / 118</td>
+              <td class="note-cell">Strong pale greenish-yellow temporal rim haze (BL FNR 29%) washes out peripheral vessels while bright optic disc edge adds TR artifacts (FP/GT 32%).</td>
+            </tr>
+            
+            <tr class="sample-row" data-cat="cat4-illumination-lesion" data-key="STARE::im0319"
+                onclick="selectSample('cat4-illumination-lesion', 'STARE::im0319')">
+              <td><span class="ds-tag ds-tag-stare">STARE</span></td>
+              <td class="mono sample-name-cell">im0319</td>
+              <td class="mono file-cell" title="logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples/Testim0319+im0324+epoch+39.jpg">Testim0319+im0324+epoch+39.jpg <span class="col-pill">Left</span></td>
+              <td class="num-cell mono">0.793</td>
+              <td class="num-cell mono">13.8%</td>
+              <td class="num-cell mono">31.2%</td>
+              <td class="num-cell mono">19.6%</td>
+              <td class="num-cell mono">85%</td>
+              <td class="num-cell mono">57 / 43</td>
+              <td class="note-cell">Severe yellow-orange glare/over-saturation washes out inferior-right vessel contrast, producing spurious linear FP fragments (BR FP/GT 53%).</td>
+            </tr>
+            
+              </tbody>
+            </table>
+          </div>
+        </section>
+        
+  </div>
+
+  <div class="zoom-modal" id="zoom-modal" onclick="closeZoom(event)">
+    <button class="zoom-close" onclick="closeZoom(event)">Close (Esc)</button>
+    <img id="zoom-img" src="" alt="Zoomed Panel" />
+    <div class="zoom-caption" id="zoom-caption"></div>
+  </div>
+
+  <script>
+    const SAMPLES = {"CHASE::Image_11L": {"dataset": "CHASE", "sample": "Image_11L", "source_file": "TestImage_11L+Image_13R+epoch+53.jpg", "source_rel_path": "logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_11L+Image_13R+epoch+53.jpg", "col_pos": "Left Column", "tile_size": 1008, "dice": 0.8272, "iou": 0.7053, "fnr": 13.2, "fp_gt_ratio": 23.1, "thin_fn_rate": 28.6, "thick_fp_pct": 86.1, "n_pred_cc": 139, "n_gt_cc": 315, "assets": {"orig": "assets/CHASE_Image_11L_orig.jpg", "pred": "assets/CHASE_Image_11L_pred.jpg", "gt": "assets/CHASE_Image_11L_gt.jpg", "err": "assets/CHASE_Image_11L_err.jpg"}, "note": "Consistent boundary thickening along main temporal arcades (ThickFP% 86%, FP/GT 0.231) merging close parallel disc branches."}, "CHASE::Image_13R": {"dataset": "CHASE", "sample": "Image_13R", "source_file": "TestImage_11L+Image_13R+epoch+53.jpg", "source_rel_path": "logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_11L+Image_13R+epoch+53.jpg", "col_pos": "Right Column", "tile_size": 1008, "dice": 0.7965, "iou": 0.6618, "fnr": 20.1, "fp_gt_ratio": 20.8, "thin_fn_rate": 37.1, "thick_fp_pct": 78.1, "n_pred_cc": 110, "n_gt_cc": 213, "assets": {"orig": "assets/CHASE_Image_13R_orig.jpg", "pred": "assets/CHASE_Image_13R_pred.jpg", "gt": "assets/CHASE_Image_13R_gt.jpg", "err": "assets/CHASE_Image_13R_err.jpg"}, "note": "Primary Representative: Lowest Dice in CHASE (0.796); extreme dark FOV (83% pixels <70 lum) erases distal branches while bright disc fibrosis triggers FP."}, "CHASE::Image_11R": {"dataset": "CHASE", "sample": "Image_11R", "source_file": "TestImage_11R+Image_14R+epoch+53.jpg", "source_rel_path": "logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_11R+Image_14R+epoch+53.jpg", "col_pos": "Left Column", "tile_size": 1008, "dice": 0.8282, "iou": 0.7068, "fnr": 10.9, "fp_gt_ratio": 26.1, "thin_fn_rate": 23.9, "thick_fp_pct": 82.1, "n_pred_cc": 81, "n_gt_cc": 135, "assets": {"orig": "assets/CHASE_Image_11R_orig.jpg", "pred": "assets/CHASE_Image_11R_pred.jpg", "gt": "assets/CHASE_Image_11R_gt.jpg", "err": "assets/CHASE_Image_11R_err.jpg"}, "note": "Lowest FNR in CHASE (10.9%) offset by high FP/GT (0.261); over-dilation fuses parallel vessels near optic disc and BL arcade."}, "CHASE::Image_14R": {"dataset": "CHASE", "sample": "Image_14R", "source_file": "TestImage_11R+Image_14R+epoch+53.jpg", "source_rel_path": "logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_11R+Image_14R+epoch+53.jpg", "col_pos": "Right Column", "tile_size": 1008, "dice": 0.8088, "iou": 0.679, "fnr": 14.9, "fp_gt_ratio": 25.3, "thin_fn_rate": 30.8, "thick_fp_pct": 67.5, "n_pred_cc": 91, "n_gt_cc": 2, "assets": {"orig": "assets/CHASE_Image_14R_orig.jpg", "pred": "assets/CHASE_Image_14R_pred.jpg", "gt": "assets/CHASE_Image_14R_gt.jpg", "err": "assets/CHASE_Image_14R_err.jpg"}, "note": "GT has 2 connected trees while prediction fractures into 91 components; breaks dark-region secondary branches and adds distant fragments."}, "CHASE::Image_12L": {"dataset": "CHASE", "sample": "Image_12L", "source_file": "TestImage_12L+Image_14L+epoch+53.jpg", "source_rel_path": "logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_12L+Image_14L+epoch+53.jpg", "col_pos": "Left Column", "tile_size": 1008, "dice": 0.811, "iou": 0.6821, "fnr": 16.6, "fp_gt_ratio": 22.2, "thin_fn_rate": 34.7, "thick_fp_pct": 79.4, "n_pred_cc": 92, "n_gt_cc": 139, "assets": {"orig": "assets/CHASE_Image_12L_orig.jpg", "pred": "assets/CHASE_Image_12L_pred.jpg", "gt": "assets/CHASE_Image_12L_gt.jpg", "err": "assets/CHASE_Image_12L_err.jpg"}, "note": "Misses distal thin branching capillaries in TL/BR quadrants (ThinFN 34.7%) while preserving primary disc arcades."}, "CHASE::Image_14L": {"dataset": "CHASE", "sample": "Image_14L", "source_file": "TestImage_12L+Image_14L+epoch+53.jpg", "source_rel_path": "logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_12L+Image_14L+epoch+53.jpg", "col_pos": "Right Column", "tile_size": 1008, "dice": 0.8319, "iou": 0.7121, "fnr": 17.8, "fp_gt_ratio": 15.4, "thin_fn_rate": 36.8, "thick_fp_pct": 82.9, "n_pred_cc": 147, "n_gt_cc": 34, "assets": {"orig": "assets/CHASE_Image_14L_orig.jpg", "pred": "assets/CHASE_Image_14L_pred.jpg", "gt": "assets/CHASE_Image_14L_gt.jpg", "err": "assets/CHASE_Image_14L_err.jpg"}, "note": "Highest Dice in CHASE (0.832) with low FP/GT (0.154), but omits fine macular/BR terminal filaments (ThinFN 36.8%)."}, "CHASE::Image_12R": {"dataset": "CHASE", "sample": "Image_12R", "source_file": "TestImage_12R+Image_13L+epoch+53.jpg", "source_rel_path": "logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_12R+Image_13L+epoch+53.jpg", "col_pos": "Left Column", "tile_size": 1008, "dice": 0.8219, "iou": 0.6977, "fnr": 15.0, "fp_gt_ratio": 21.9, "thin_fn_rate": 32.2, "thick_fp_pct": 83.6, "n_pred_cc": 148, "n_gt_cc": 267, "assets": {"orig": "assets/CHASE_Image_12R_orig.jpg", "pred": "assets/CHASE_Image_12R_pred.jpg", "gt": "assets/CHASE_Image_12R_gt.jpg", "err": "assets/CHASE_Image_12R_err.jpg"}, "note": "Over-thickened superior/inferior main trunks (ThickFP% 84%, FP/GT 0.219) causing adjacent twin vessels in TL to coalesce."}, "CHASE::Image_13L": {"dataset": "CHASE", "sample": "Image_13L", "source_file": "TestImage_12R+Image_13L+epoch+53.jpg", "source_rel_path": "logs/val_msa_vit_h_chase_dice_ce_conv_improved_tta_2026_07_26_17_32_06/Samples/TestImage_12R+Image_13L+epoch+53.jpg", "col_pos": "Right Column", "tile_size": 1008, "dice": 0.8206, "iou": 0.6958, "fnr": 16.3, "fp_gt_ratio": 20.3, "thin_fn_rate": 32.4, "thick_fp_pct": 82.7, "n_pred_cc": 69, "n_gt_cc": 178, "assets": {"orig": "assets/CHASE_Image_13L_orig.jpg", "pred": "assets/CHASE_Image_13L_pred.jpg", "gt": "assets/CHASE_Image_13L_gt.jpg", "err": "assets/CHASE_Image_13L_err.jpg"}, "note": "Severe under-illumination across temporal FOV (74% dark pixels, mean lum 61.1) plus pale peripapillary sheen causing uneven dropouts."}, "DRIVE::01": {"dataset": "DRIVE", "sample": "01", "source_file": "Test01+13+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test01+13+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.8048, "iou": 0.6733, "fnr": 12.5, "fp_gt_ratio": 29.9, "thin_fn_rate": 18.6, "thick_fp_pct": 97.2, "n_pred_cc": 152, "n_gt_cc": 447, "assets": {"orig": "assets/DRIVE_01_orig.jpg", "pred": "assets/DRIVE_01_pred.jpg", "gt": "assets/DRIVE_01_gt.jpg", "err": "assets/DRIVE_01_err.jpg"}, "note": "Strong wall dilation across all quadrants (FP/GT 0.299, ThickFP% 97%) merging closely running vessels near the temporal optic rim."}, "DRIVE::13": {"dataset": "DRIVE", "sample": "13", "source_file": "Test01+13+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test01+13+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.7976, "iou": 0.6633, "fnr": 22.4, "fp_gt_ratio": 16.9, "thin_fn_rate": 36.0, "thick_fp_pct": 96.2, "n_pred_cc": 202, "n_gt_cc": 628, "assets": {"orig": "assets/DRIVE_13_orig.jpg", "pred": "assets/DRIVE_13_pred.jpg", "gt": "assets/DRIVE_13_gt.jpg", "err": "assets/DRIVE_13_err.jpg"}, "note": "Dense fine capillary tree in TL/BL is heavily pruned (ThinFN 36.0%, FNR 22.4%, TL FNR 31%), keeping FP/GT low (0.169)."}, "DRIVE::02": {"dataset": "DRIVE", "sample": "02", "source_file": "Test02+16+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test02+16+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.8316, "iou": 0.7118, "fnr": 17.2, "fp_gt_ratio": 16.4, "thin_fn_rate": 29.3, "thick_fp_pct": 95.8, "n_pred_cc": 149, "n_gt_cc": 395, "assets": {"orig": "assets/DRIVE_02_orig.jpg", "pred": "assets/DRIVE_02_pred.jpg", "gt": "assets/DRIVE_02_gt.jpg", "err": "assets/DRIVE_02_err.jpg"}, "note": "Best Dice in DRIVE (0.832) yet 29.3% of thin capillary pixels drop out, notably in upper-left/lower-left distal branches."}, "DRIVE::16": {"dataset": "DRIVE", "sample": "16", "source_file": "Test02+16+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test02+16+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.8047, "iou": 0.6733, "fnr": 17.8, "fp_gt_ratio": 22.0, "thin_fn_rate": 25.3, "thick_fp_pct": 94.7, "n_pred_cc": 200, "n_gt_cc": 78, "assets": {"orig": "assets/DRIVE_16_orig.jpg", "pred": "assets/DRIVE_16_pred.jpg", "gt": "assets/DRIVE_16_gt.jpg", "err": "assets/DRIVE_16_err.jpg"}, "note": "Primary Representative: Extreme CC inflation (200 predicted vs. 78 GT = 2.56\u00d7); mid-caliber temporal vessels disintegrate into beaded islands."}, "DRIVE::03": {"dataset": "DRIVE", "sample": "03", "source_file": "Test03+17+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test03+17+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.8022, "iou": 0.6697, "fnr": 20.5, "fp_gt_ratio": 18.7, "thin_fn_rate": 34.4, "thick_fp_pct": 92.0, "n_pred_cc": 146, "n_gt_cc": 482, "assets": {"orig": "assets/DRIVE_03_orig.jpg", "pred": "assets/DRIVE_03_pred.jpg", "gt": "assets/DRIVE_03_gt.jpg", "err": "assets/DRIVE_03_err.jpg"}, "note": "Darkest DRIVE fundus (mean lum 82.1, 14% dark pixels) with scattered exudate specks; low contrast drops TR/upper-disc vessels (TR FNR 29%)."}, "DRIVE::17": {"dataset": "DRIVE", "sample": "17", "source_file": "Test03+17+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test03+17+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.7893, "iou": 0.652, "fnr": 17.0, "fp_gt_ratio": 27.3, "thin_fn_rate": 25.0, "thick_fp_pct": 92.2, "n_pred_cc": 165, "n_gt_cc": 118, "assets": {"orig": "assets/DRIVE_17_orig.jpg", "pred": "assets/DRIVE_17_pred.jpg", "gt": "assets/DRIVE_17_gt.jpg", "err": "assets/DRIVE_17_err.jpg"}, "note": "Strong pale greenish-yellow temporal rim haze (BL FNR 29%) washes out peripheral vessels while bright optic disc edge adds TR artifacts (FP/GT 32%)."}, "DRIVE::05": {"dataset": "DRIVE", "sample": "05", "source_file": "Test05+04+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test05+04+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.8012, "iou": 0.6684, "fnr": 23.7, "fp_gt_ratio": 14.1, "thin_fn_rate": 37.8, "thick_fp_pct": 97.6, "n_pred_cc": 165, "n_gt_cc": 643, "assets": {"orig": "assets/DRIVE_05_orig.jpg", "pred": "assets/DRIVE_05_pred.jpg", "gt": "assets/DRIVE_05_gt.jpg", "err": "assets/DRIVE_05_err.jpg"}, "note": "Misses dense perimacular fine vessel network across TR/BR quadrants (ThinFN 37.8%, FNR 23.7%) while main trunks stay crisp."}, "DRIVE::04": {"dataset": "DRIVE", "sample": "04", "source_file": "Test05+04+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test05+04+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.8168, "iou": 0.6903, "fnr": 20.4, "fp_gt_ratio": 15.3, "thin_fn_rate": 35.3, "thick_fp_pct": 97.8, "n_pred_cc": 128, "n_gt_cc": 647, "assets": {"orig": "assets/DRIVE_04_orig.jpg", "pred": "assets/DRIVE_04_pred.jpg", "gt": "assets/DRIVE_04_gt.jpg", "err": "assets/DRIVE_04_err.jpg"}, "note": "Severe lower-left macular/peripheral capillary omission (BL quadrant FNR 37%, overall ThinFN 35.3%) with very low FP/GT (0.153)."}, "DRIVE::06": {"dataset": "DRIVE", "sample": "06", "source_file": "Test06+09+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test06+09+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.795, "iou": 0.6597, "fnr": 24.5, "fp_gt_ratio": 14.5, "thin_fn_rate": 38.6, "thick_fp_pct": 97.6, "n_pred_cc": 179, "n_gt_cc": 673, "assets": {"orig": "assets/DRIVE_06_orig.jpg", "pred": "assets/DRIVE_06_pred.jpg", "gt": "assets/DRIVE_06_gt.jpg", "err": "assets/DRIVE_06_err.jpg"}, "note": "Primary Representative: Highest FNR in DRIVE (24.5%) and worst ThinFN (38.6%); extensive fine capillary dropout across TL/BL/TR."}, "DRIVE::09": {"dataset": "DRIVE", "sample": "09", "source_file": "Test06+09+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test06+09+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.7923, "iou": 0.656, "fnr": 22.1, "fp_gt_ratio": 18.7, "thin_fn_rate": 33.5, "thick_fp_pct": 98.3, "n_pred_cc": 173, "n_gt_cc": 583, "assets": {"orig": "assets/DRIVE_09_orig.jpg", "pred": "assets/DRIVE_09_pred.jpg", "gt": "assets/DRIVE_09_gt.jpg", "err": "assets/DRIVE_09_err.jpg"}, "note": "Extensive loss of fine branching twigs in TR/BR quadrants (ThinFN 33.5%, FNR 22.1%); major arcades remain well-delineated."}, "DRIVE::10": {"dataset": "DRIVE", "sample": "10", "source_file": "Test10+12+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test10+12+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.7934, "iou": 0.6575, "fnr": 17.4, "fp_gt_ratio": 25.6, "thin_fn_rate": 27.4, "thick_fp_pct": 97.6, "n_pred_cc": 162, "n_gt_cc": 950, "assets": {"orig": "assets/DRIVE_10_orig.jpg", "pred": "assets/DRIVE_10_pred.jpg", "gt": "assets/DRIVE_10_gt.jpg", "err": "assets/DRIVE_10_err.jpg"}, "note": "Mid-caliber branches break into dashed segments across BL/TL (162 CCs), while central reflex splits thicker trunks slightly."}, "DRIVE::12": {"dataset": "DRIVE", "sample": "12", "source_file": "Test10+12+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test10+12+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.8124, "iou": 0.684, "fnr": 15.6, "fp_gt_ratio": 23.3, "thin_fn_rate": 24.8, "thick_fp_pct": 97.3, "n_pred_cc": 137, "n_gt_cc": 489, "assets": {"orig": "assets/DRIVE_12_orig.jpg", "pred": "assets/DRIVE_12_pred.jpg", "gt": "assets/DRIVE_12_gt.jpg", "err": "assets/DRIVE_12_err.jpg"}, "note": "Intermediate temporal vessels fragment into short disconnected dashes and dots, especially in TR/BR quadrants (BR FNR 21%)."}, "DRIVE::11": {"dataset": "DRIVE", "sample": "11", "source_file": "Test11+15+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test11+15+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.7875, "iou": 0.6495, "fnr": 19.8, "fp_gt_ratio": 23.5, "thin_fn_rate": 29.7, "thick_fp_pct": 97.9, "n_pred_cc": 186, "n_gt_cc": 1024, "assets": {"orig": "assets/DRIVE_11_orig.jpg", "pred": "assets/DRIVE_11_pred.jpg", "gt": "assets/DRIVE_11_gt.jpg", "err": "assets/DRIVE_11_err.jpg"}, "note": "Shows a major topological gap severing the superior-right (TR) peripheral arcade (TR FNR 36%) plus fragmented intermediate crossings."}, "DRIVE::15": {"dataset": "DRIVE", "sample": "15", "source_file": "Test11+15+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test11+15+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.8023, "iou": 0.6699, "fnr": 14.8, "fp_gt_ratio": 27.1, "thin_fn_rate": 21.9, "thick_fp_pct": 96.7, "n_pred_cc": 121, "n_gt_cc": 448, "assets": {"orig": "assets/DRIVE_15_orig.jpg", "pred": "assets/DRIVE_15_pred.jpg", "gt": "assets/DRIVE_15_gt.jpg", "err": "assets/DRIVE_15_err.jpg"}, "note": "High recall (FNR 14.8%) accompanied by 27.1% FP/GT ratio (ThickFP% 97%), visibly fattening main arcade calibers."}, "DRIVE::14": {"dataset": "DRIVE", "sample": "14", "source_file": "Test14+08+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test14+08+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.8016, "iou": 0.6689, "fnr": 14.7, "fp_gt_ratio": 27.4, "thin_fn_rate": 23.5, "thick_fp_pct": 95.4, "n_pred_cc": 166, "n_gt_cc": 543, "assets": {"orig": "assets/DRIVE_14_orig.jpg", "pred": "assets/DRIVE_14_pred.jpg", "gt": "assets/DRIVE_14_gt.jpg", "err": "assets/DRIVE_14_err.jpg"}, "note": "Dark red retinal hemorrhages and microaneurysm clusters in BL quadrant induce false-positive spots and local vessel confusion (BL FP/GT 38%)."}, "DRIVE::08": {"dataset": "DRIVE", "sample": "08", "source_file": "Test14+08+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test14+08+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.8009, "iou": 0.6679, "fnr": 18.7, "fp_gt_ratio": 21.8, "thin_fn_rate": 29.9, "thick_fp_pct": 97.1, "n_pred_cc": 133, "n_gt_cc": 568, "assets": {"orig": "assets/DRIVE_08_orig.jpg", "pred": "assets/DRIVE_08_pred.jpg", "gt": "assets/DRIVE_08_gt.jpg", "err": "assets/DRIVE_08_err.jpg"}, "note": "Prominent bright yellow hard exudate cluster in macular/BL region and bright optic disc cause TL vessel dropout (FNR 26%) and BL false positives."}, "DRIVE::18": {"dataset": "DRIVE", "sample": "18", "source_file": "Test18+19+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test18+19+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.7871, "iou": 0.6489, "fnr": 11.8, "fp_gt_ratio": 35.9, "thin_fn_rate": 16.9, "thick_fp_pct": 95.5, "n_pred_cc": 146, "n_gt_cc": 114, "assets": {"orig": "assets/DRIVE_18_orig.jpg", "pred": "assets/DRIVE_18_pred.jpg", "gt": "assets/DRIVE_18_gt.jpg", "err": "assets/DRIVE_18_err.jpg"}, "note": "Second highest FP/GT in DRIVE (0.359, ThickFP% 95%) and low Dice (0.787); aggressive wall dilation thickens trunks and merges disc bifurcations."}, "DRIVE::19": {"dataset": "DRIVE", "sample": "19", "source_file": "Test18+19+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test18+19+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.8149, "iou": 0.6876, "fnr": 10.9, "fp_gt_ratio": 29.6, "thin_fn_rate": 15.5, "thick_fp_pct": 96.2, "n_pred_cc": 192, "n_gt_cc": 301, "assets": {"orig": "assets/DRIVE_19_orig.jpg", "pred": "assets/DRIVE_19_pred.jpg", "gt": "assets/DRIVE_19_gt.jpg", "err": "assets/DRIVE_19_err.jpg"}, "note": "Heavy boundary expansion (FP/GT 0.296, ThickFP% 96%) with low FNR (10.9%), fusing narrow inter-vessel gaps around the optic nerve head."}, "DRIVE::20": {"dataset": "DRIVE", "sample": "20", "source_file": "Test20+07+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test20+07+epoch+80.jpg", "col_pos": "Left Column", "tile_size": 592, "dice": 0.7761, "iou": 0.6341, "fnr": 10.3, "fp_gt_ratio": 41.4, "thin_fn_rate": 14.5, "thick_fp_pct": 89.7, "n_pred_cc": 147, "n_gt_cc": 137, "assets": {"orig": "assets/DRIVE_20_orig.jpg", "pred": "assets/DRIVE_20_pred.jpg", "gt": "assets/DRIVE_20_gt.jpg", "err": "assets/DRIVE_20_err.jpg"}, "note": "Primary Representative: Worst Dice in DRIVE (0.776) and highest FP/GT overall (0.414, TL FP/GT 0.47); pronounced cuff-like dilation & fusion."}, "DRIVE::07": {"dataset": "DRIVE", "sample": "07", "source_file": "Test20+07+epoch+80.jpg", "source_rel_path": "logs/val_msa_vit_h_drive_dice_ce_conv_improved_tta_2026_07_26_17_25_22/Samples/Test20+07+epoch+80.jpg", "col_pos": "Right Column", "tile_size": 592, "dice": 0.8039, "iou": 0.6721, "fnr": 23.9, "fp_gt_ratio": 13.2, "thin_fn_rate": 37.5, "thick_fp_pct": 97.8, "n_pred_cc": 149, "n_gt_cc": 561, "assets": {"orig": "assets/DRIVE_07_orig.jpg", "pred": "assets/DRIVE_07_pred.jpg", "gt": "assets/DRIVE_07_gt.jpg", "err": "assets/DRIVE_07_err.jpg"}, "note": "High thin-vessel miss rate (ThinFN 37.5%, FNR 23.9%), concentrated in upper-left temporal periphery (TL FNR 36%) with minimal FP (0.132)."}, "STARE::im0255": {"dataset": "STARE", "sample": "im0255", "source_file": "Testim0255+im0291+epoch+39.jpg", "source_rel_path": "logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples/Testim0255+im0291+epoch+39.jpg", "col_pos": "Left Column", "tile_size": 704, "dice": 0.8206, "iou": 0.6957, "fnr": 24.6, "fp_gt_ratio": 8.4, "thin_fn_rate": 38.0, "thick_fp_pct": 96.1, "n_pred_cc": 238, "n_gt_cc": 171, "assets": {"orig": "assets/STARE_im0255_orig.jpg", "pred": "assets/STARE_im0255_pred.jpg", "gt": "assets/STARE_im0255_gt.jpg", "err": "assets/STARE_im0255_err.jpg"}, "note": "Highest FNR across all 32 samples (24.6%, ThinFN 38.0%) and lowest FP/GT (0.084); drops fine central/macular capillary meshwork."}, "STARE::im0291": {"dataset": "STARE", "sample": "im0291", "source_file": "Testim0255+im0291+epoch+39.jpg", "source_rel_path": "logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples/Testim0255+im0291+epoch+39.jpg", "col_pos": "Right Column", "tile_size": 704, "dice": 0.8312, "iou": 0.7112, "fnr": 11.7, "fp_gt_ratio": 24.2, "thin_fn_rate": 19.8, "thick_fp_pct": 89.8, "n_pred_cc": 31, "n_gt_cc": 53, "assets": {"orig": "assets/STARE_im0291_orig.jpg", "pred": "assets/STARE_im0291_pred.jpg", "gt": "assets/STARE_im0291_gt.jpg", "err": "assets/STARE_im0291_err.jpg"}, "note": "Despite peripheral haze, exhibits aggressive trunk thickening (FP/GT 0.242, ThickFP% 90%) and low FNR (11.7%), merging disc-adjacent trunks."}, "STARE::im0319": {"dataset": "STARE", "sample": "im0319", "source_file": "Testim0319+im0324+epoch+39.jpg", "source_rel_path": "logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples/Testim0319+im0324+epoch+39.jpg", "col_pos": "Left Column", "tile_size": 704, "dice": 0.793, "iou": 0.6571, "fnr": 13.8, "fp_gt_ratio": 31.2, "thin_fn_rate": 19.6, "thick_fp_pct": 84.6, "n_pred_cc": 57, "n_gt_cc": 43, "assets": {"orig": "assets/STARE_im0319_orig.jpg", "pred": "assets/STARE_im0319_pred.jpg", "gt": "assets/STARE_im0319_gt.jpg", "err": "assets/STARE_im0319_err.jpg"}, "note": "Severe yellow-orange glare/over-saturation washes out inferior-right vessel contrast, producing spurious linear FP fragments (BR FP/GT 53%)."}, "STARE::im0324": {"dataset": "STARE", "sample": "im0324", "source_file": "Testim0319+im0324+epoch+39.jpg", "source_rel_path": "logs/val_msa_vit_h_stare_dice_ce_conv_improved_tta_2026_07_25_16_45_21/Samples/Testim0319+im0324+epoch+39.jpg", "col_pos": "Right Column", "tile_size": 704, "dice": 0.7977, "iou": 0.6635, "fnr": 16.1, "fp_gt_ratio": 26.5, "thin_fn_rate": 27.9, "thick_fp_pct": 74.0, "n_pred_cc": 63, "n_gt_cc": 41, "assets": {"orig": "assets/STARE_im0324_orig.jpg", "pred": "assets/STARE_im0324_pred.jpg", "gt": "assets/STARE_im0324_gt.jpg", "err": "assets/STARE_im0324_err.jpg"}, "note": "Dense upper-left vascular tree fractures into dotted islands (63 vs. 41 CCs, TL FNR 20%) alongside disconnected false fragments (DistFP 1618)."}};
+    const REPRESENTATIVES = {
+      "cat1-capillary-omission": "DRIVE::06",
+      "cat2-vessel-dilation": "DRIVE::20",
+      "cat3-topological-fragmentation": "DRIVE::16",
+      "cat4-illumination-lesion": "CHASE::Image_13R"
+    };
+
+    function selectSample(catId, sampleKey) {
+      const rec = SAMPLES[sampleKey];
+      if (!rec) return;
+
+      // Update active badge states
+      document.querySelectorAll(`.sample-badge[data-cat="${catId}"]`).forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.key === sampleKey);
+      });
+
+      // Update active table row states
+      document.querySelectorAll(`.sample-row[data-cat="${catId}"]`).forEach(row => {
+        row.classList.toggle("active-row", row.dataset.key === sampleKey);
+      });
+
+      // Update viewer images
+      document.getElementById(`img-orig-${catId}`).src = rec.assets.orig;
+      document.getElementById(`img-pred-${catId}`).src = rec.assets.pred;
+      document.getElementById(`img-err-${catId}`).src = rec.assets.err;
+      document.getElementById(`img-gt-${catId}`).src = rec.assets.gt;
+
+      // Update header metadata
+      const dsTag = document.getElementById(`v-ds-${catId}`);
+      dsTag.textContent = rec.dataset;
+      dsTag.className = `ds-tag ds-tag-${rec.dataset.toLowerCase()}`;
+
+      document.getElementById(`v-name-${catId}`).textContent = rec.sample;
+      document.getElementById(`v-src-${catId}`).textContent =
+        `${rec.source_file} (${rec.col_pos}, ${rec.tile_size}×${rec.tile_size})`;
+
+      const repBadge = document.getElementById(`v-rep-badge-${catId}`);
+      repBadge.style.display = (REPRESENTATIVES[catId] === sampleKey) ? "inline-block" : "none";
+
+      // Update metrics & note bar
+      document.getElementById(`v-metrics-${catId}`).innerHTML = `
+        <span>Dice: <strong>${rec.dice.toFixed(3)}</strong></span>
+        <span>IoU: <strong>${rec.iou.toFixed(3)}</strong></span>
+        <span>FNR (Missed): <strong>${rec.fnr.toFixed(1)}%</strong></span>
+        <span>FP/GT Ratio: <strong>${rec.fp_gt_ratio.toFixed(1)}%</strong></span>
+        <span>Thin-Vessel FN: <strong>${rec.thin_fn_rate.toFixed(1)}%</strong></span>
+        <span>Thickening FP: <strong>${rec.thick_fp_pct.toFixed(0)}%</strong></span>
+        <span>CCs (Pred/GT): <strong>${rec.n_pred_cc} / ${rec.n_gt_cc}</strong></span>
+      `;
+      document.getElementById(`v-note-${catId}`).textContent = rec.note;
+    }
+
+    function setViewMode(catId, mode, btnEl) {
+      const viewer = document.getElementById(`viewer-${catId}`);
+      viewer.setAttribute("data-mode", mode);
+      viewer.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+      btnEl.classList.add("active");
+    }
+
+    function jumpToSample(catId, sampleKey) {
+      selectSample(catId, sampleKey);
+      const viewer = document.getElementById(`viewer-${catId}`);
+      if (viewer) {
+        viewer.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
+    function openZoom(frameEl) {
+      const img = frameEl.querySelector("img");
+      const fig = frameEl.closest("figure");
+      const cap = fig ? fig.querySelector("figcaption").textContent : "";
+      const viewer = frameEl.closest(".viewer-card");
+      const ds = viewer ? viewer.querySelector(".ds-tag").textContent : "";
+      const sname = viewer ? viewer.querySelector(".viewer-sample-name").textContent : "";
+
+      document.getElementById("zoom-img").src = img.src;
+      document.getElementById("zoom-caption").textContent = `${ds} · ${sname} — ${cap}`;
+      document.getElementById("zoom-modal").classList.add("open");
+    }
+
+    function closeZoom(e) {
+      if (e.target.id === "zoom-img") return;
+      document.getElementById("zoom-modal").classList.remove("open");
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        document.getElementById("zoom-modal").classList.remove("open");
+      }
+    });
+  </script>
+</body>
+</html>
